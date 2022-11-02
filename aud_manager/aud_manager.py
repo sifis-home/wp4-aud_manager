@@ -3,6 +3,7 @@ import sys, threading, signal
 import time, math, queue
 
 from collections import deque
+from datetime import datetime, timedelta
 from flask import Flask
 
 # Local imports
@@ -15,9 +16,13 @@ import nflog_connector as nfc
 
 
 class AUDManager(threading.Thread):
+    """Main thread for running AUD Manager."""
+
     def __init__(self):
         threading.Thread.__init__(self)
-        self.running = True
+        self.running = False
+        self.start_e = threading.Event()
+        self.start_t = None
 
         self.aud_update_interval = 30 # seconds
 
@@ -33,6 +38,10 @@ class AUDManager(threading.Thread):
     def __str__(self):
         out = "*** AUD manager ***\n"
         out += "    running: "+str(self.running)+"\n"
+        if self.start_t:
+            out += "    running since: "+str(self.start_t)+"\n"
+            uptime = datetime.now().replace(microsecond=0) - self.start_t.replace(microsecond=0)
+            out += "    uptime: "+str(uptime)+"\n"
         out += "    local net: "+str(self.local_net)+"\n"
         out += "    ep devices:\n"
         for ep, _  in self.ep_pool.ep_device.items():
@@ -71,25 +80,35 @@ class AUDManager(threading.Thread):
     def run(self):
         self.reader.start()
 
-        # Clear buffer to avoid surge of packets at startup
-        self.raw_buf.clear()
+        while True:
+            self.start_e.wait()
+            self.start_e.clear()
+            self.start_t = datetime.now()
+            self.running = True
 
-        aud_update_t = time.time() + self.aud_update_interval
-        while self.running:
-            for i in range(len(self.raw_buf)):
-                self.ingress(self.raw_buf.popleft())
+            # Clear buffer to avoid surge of packets at startup
+            self.raw_buf.clear()
 
-            self.connlist.cleanup()
+            aud_update_t = time.time() + self.aud_update_interval
+            while self.running:
+                for i in range(len(self.raw_buf)):
+                    self.ingress(self.raw_buf.popleft())
 
-            if aud_update_t < time.time():
-                self.aud_update()
-                aud_update_t = time.time() + self.aud_update_interval
+                self.connlist.cleanup()
 
-            time.sleep(1)
+                if aud_update_t < time.time():
+                    self.aud_update()
+                    aud_update_t = time.time() + self.aud_update_interval
+
+                time.sleep(1)
+
+            self.start_t = None
 
         self.reader.stop()
         self.reader.join()
 
+    def stop(self):
+        self.running = False
 
     def aud_update(self):
         for _, ep in self.ep_pool.ep_device.items():
@@ -106,6 +125,16 @@ aud_manager = AUDManager()
 app = Flask(__name__)
 
 
+
+@app.route("/start")
+def apicall_aud_manager_start():
+    aud_manager.start_e.set()
+    return "OK\n"
+
+@app.route("/stop")
+def apicall_aud_manager_stop():
+    aud_manager.stop()
+    return "OK\n"
 
 @app.route("/status")
 def apicall_aud_manager_status():
