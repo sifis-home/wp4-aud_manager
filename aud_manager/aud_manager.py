@@ -26,7 +26,8 @@ class AUDManager(threading.Thread):
 
         self.aud_update_interval = 30 # seconds
 
-        self.local_net = "172.18.10.0/24" # TODO: read this from args or config file
+        #self.local_net = "172.18.10.0/24" # TODO: read this from args or config file
+        self.local_net = "192.168.80.129/32" # TODO: read this from args or config file
 
         self.ep_pool = aud_endpoint.EndpointPool(self)
         self.connlist = aud_conn.ConnList()
@@ -73,7 +74,7 @@ class AUDManager(threading.Thread):
             flags = []
 
         self.connlist.add(src, dst, int(row["proto"]),
-                          sport, dport, flags,
+                          sport, dport, row["dir"], flags,
                           int(row["len"]), int(row["t"]))
 
 

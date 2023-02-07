@@ -83,7 +83,6 @@ static int cb(struct nflog_g_handle *gh, struct nfgenmsg *nfmsg,
 
     idx = sprintf(buffer, "t=%lu", ts);
     idx += sprintf(buffer+idx, " dir=%c", dir[0]);
-
     if (hwll_hdr_len >= 12) {
         idx += sprintf(buffer+idx, " dst_hw=%02x:%02x:%02x:%02x:%02x:%02x",
                        (unsigned char) hwll_hdr[0], (unsigned char) hwll_hdr[1],
@@ -130,6 +129,8 @@ static int cb(struct nflog_g_handle *gh, struct nfgenmsg *nfmsg,
         break;
 
     }
+
+
 
     printf("%s\n", buffer);
 
