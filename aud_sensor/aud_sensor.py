@@ -1,22 +1,17 @@
 #!/usr/bin/python3
 import sys, threading, signal
 import time, math, queue
+import json
 
 from collections import deque
 from datetime import datetime, timedelta
 from flask import Flask, request
 
 # Local imports
-import aud_conn
 import aud
+import aud_conn
+import packetreader as pr
 
-sys.path.append("../modules/")
-import nflog_connector as nfc
-
-l4proto = {1: "ICMP",
-           2: "IGMP",
-           6: "TCP",
-           17: "UDP"}
 
 class AUDSensor(threading.Thread):
     """Main thread for running AUD Sensor."""
@@ -29,58 +24,46 @@ class AUDSensor(threading.Thread):
         self.start_t = None
         self.sigterm = threading.Event()
         self.log = list()
-
-        self.local_net = "192.168.80.0/24" # TODO: read this from args or config file
         self.local_ips = set()
-        self.acl_from = list()
-        self.acl_to = list()
 
-        #self.ep_pool = aud_endpoint.EndpointPool(self)
+        self.aud = aud.AUD()
         self.aud_update_interval = 10 # seconds
         self.connlist = aud_conn.ConnList(self)
-        self.anomalies = deque()
+
         self.raw_buf = deque()
-        self.reader = nfc.NflogConnector(self.raw_buf)
+        self.reader = pr.PacketReader(self.raw_buf)
 
     def __str__(self):
+        pad = "  "
         out = "*** AUD sensor ***\n"
-        out += "    running: "+str(self.running)+"\n"
-        out += "    learning: "+str(self.learning)+"\n"
+        out += pad+"running: "+str(self.running)+"\n"
+        out += pad+"learning: "+str(self.learning)+"\n"
         if self.running:
-            out += "    running since: "+str(self.start_t.strftime("%d-%m-%Y %H:%M:%S"))+"\n"
+            out += pad+"running since: "+str(self.start_t.strftime("%d-%m-%Y %H:%M:%S"))+"\n"
             uptime = datetime.now().replace(microsecond=0) - self.start_t.replace(microsecond=0)
-            out += "    uptime: "+str(uptime)+"\n"
-        out += "    local net: "+str(self.local_net)+"\n"
-        out += "    my IPs: "+str(self.local_ips)+"\n"
-        out += "    connlist length: "+str(len(self.connlist.connlist))+"\n"
-        out += "    ACL:\n"
-        out += "      from:\n"
-        for k in self.acl_from:
-            out += "        "+str(k)+"\n"
-        out += "      to:\n"
-        for k in self.acl_to:
-            out += "        "+str(k)+"\n"
+            out += pad+"uptime: "+str(uptime)+"\n"
+
+        out += pad+"my IPs: "+str(self.local_ips)+"\n"
+        out += pad+"connlist length: "+str(len(self.connlist.conns))+"\n"
+        out += str(self.aud)
+
         return out
 
-    def ingress(self, row):
+    def status(self):
+        #print(self.aud.anomaly_wrapper())
+        #print([a for a in self.aud.anomaly_iterator()])
+        res = {
+            "RequestPostTopicUUID": {
+                "topic_name": "SIFIS:AUD_Manager_Results",
+                "topic_uuid": "FIXTHIS",
+                "value": {
+                    "description": "aud_sensor",
+                },
+                "anomalies": self.aud.anomaly_wrapper(),
 
-        my_ip = row["dst_addr"] if int(row["dir"]) == 0 else row["src_addr"]
-        self.local_ips.add(my_ip)
-
-        try:
-            sport, dport = int(row["src_port"]), int(row["dst_port"])
-        except KeyError:
-            # Protocols without ports, e.g., ICMP
-            sport, dport = -1, -1
-
-        try:
-            flags = row["flags"].rstrip(",").split(",")
-        except KeyError:
-            flags = []
-
-        self.connlist.add(int(row["t"]), int(row["dir"]), int(row["len"]),
-                          row["src_addr"], row["dst_addr"], int(row["proto"]),
-                          sport, dport, flags)
+            }
+        }
+        return json.dumps(res)
 
     def run(self):
         self.running = True
@@ -97,15 +80,16 @@ class AUDSensor(threading.Thread):
 
         while self.running:
             for i in range(len(self.raw_buf)):
-                self.ingress(self.raw_buf.popleft())
+                self.connlist.record(self.raw_buf.popleft())
 
             self.connlist.cleanup()
 
             if aud_update_t < time.time():
+                print("*** AUD update time ***")
                 self.aud_update()
                 aud_update_t = time.time() + self.aud_update_interval
 
-            time.sleep(1)
+            time.sleep(0.1)
 
         self.reader.stop()
         self.reader.join()
@@ -127,7 +111,7 @@ class AUDSensor(threading.Thread):
         if direction == "to": a, b = b, a
 
         out = "Unknown flow "+a.upper()+" device "+b+" "+addr
-        out += ", svc_port="+str(port)+", protocol="+l4proto[int(proto)]
+        out += ", svc_port="+str(port)+", protocol="+aud.l4proto[int(proto)]
         out += " --> Queued for anomaly verdict"
         self.log_notify(out)
 
@@ -137,23 +121,14 @@ class AUDSensor(threading.Thread):
         return "OK\n"
 
     def aud_update(self):
-        acl_from, acl_to = self.connlist.aggregate()
+        acl_keys = self.connlist.aggregate()
 
-        for entry in acl_from:
-            if entry not in self.acl_from:
-                if self.learning:
-                    self.acl_from.append(entry)
-                elif entry not in self.anomalies:
-                    self.anomalies.append(entry)
-                    self.log_anomaly(entry.direction, entry.addr, entry.svc_port, entry.proto)
+        for key in acl_keys:
+            if key not in self.aud.records:
+                self.aud.records[key] = list()
 
-        for entry in acl_to:
-            if entry not in self.acl_to:
-                if self.learning:
-                    self.acl_to.append(entry)
-                elif entry not in self.anomalies:
-                    self.anomalies.append(entry)
-                    self.log_anomaly(entry.direction, entry.addr, entry.svc_port, entry.proto)
+        self.aud.update()
+
 
 
 aud_sensor = AUDSensor()
@@ -176,29 +151,34 @@ def apicall_aud_sensor_stop():
 
 @app.route("/status")
 def apicall_aud_sensor_status():
-    return str(aud_sensor)
+    return str(aud_sensor.status())
 
 @app.route("/log")
-def apicall_aud_log():
+def apicall_aud_sensor_log():
     return "\n".join(aud_sensor.log)+"\n"
 
 # API endpoints for developer use
+@app.route("/dev/diag")
+def apicall_aud_dev_diag_status():
+    return str(aud_sensor)
+
 @app.route("/dev/aud-update")
-def apicall_aud_update():
+def apicall_aud_dev_update():
     return str(aud_sensor.aud_update())
 
 @app.route("/dev/connlist")
-def apicall_dump_connlist():
+def apicall_aud_dev_connlist():
     return str(aud_sensor.connlist)
 
 @app.route("/dev/force-stop-learning")
-def apicall_aud_stop_learning():
+def apicall_aud_dev_stop_learning():
     return str(aud_sensor.stop_learning("via "+request.path))
 
 
 def terminate(sig, frame):
-    aud_sensor.terminate()
-    aud_sensor.join()
+    if aud_sensor.running:
+        aud_sensor.terminate()
+        aud_sensor.join()
     sys.exit(0)
 
 
@@ -206,4 +186,4 @@ signal.signal(signal.SIGINT, terminate)
 signal.signal(signal.SIGTERM, terminate)
 
 
-app.run(host="0.0.0.0", port=5050)
+app.run(host="0.0.0.0", port=6060)

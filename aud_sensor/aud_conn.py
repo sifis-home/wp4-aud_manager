@@ -1,12 +1,19 @@
 import sys, time
-import aud
+import ipaddress
 
 from typing import NamedTuple
+
+# Local imports
+import aud
+import packetreader as pr
+
 
 class ConnKey(NamedTuple):
     proto: int
     src_addr: str
     dst_addr: str
+    #src_addr: ipaddress.ip_address
+    #dst_addr: ipaddress.ip_address
     src_port: int
     dst_port: int
 
@@ -16,104 +23,120 @@ class Flags(NamedTuple):
 
 class ConnList():
     def __init__(self, aud_handle):
-        self.aud = aud_handle
+        self.ah = aud_handle
+
         self.lookup = dict()
-        self.connlist = list()
+        self.conns = list()
+
         self.timeout = 60*1000000
 
     def __str__(self):
-        out = "ConnList:\n"
-        out += "    connlist length: "+str(len(self.connlist))+"\n"
-        out += "    lookup list length: "+str(len(self.lookup))+"\n"
-        out += "    lookup:\n"
+        out = "FIXTHIS ConnList:\n"
+        out += "  conns length: "+str(len(self.conns))+"\n"
+        out += "  lookup length: "+str(len(self.lookup))+"\n"
+        out += "  lookup:\n"
         for key, conn in self.lookup.items():
-            out += "        "+str(conn.key)+"\n"
-        out += "    connlist:\n"
-        for conn in self.connlist:
-            out += "        "+str(conn.key)+"\n"
+            out += "    "+str(conn.key)+"\n"
+        out += "  conns:\n"
+        for conn in self.conns:
+            out += "    "+str(conn.key)+"\n"
+            out += str(conn)+"\n"
         return out
 
     def cleanup(self):
-        expiry_t = int(time.time_ns() / 1000) - self.timeout
-
-        # Lookup cleanup
         for key in list(self.lookup.keys()):
-            if self.lookup[key].last_updated < expiry_t:
-                self.lookup[key].expired = True
-                del self.lookup[key]
+            if self.lookup[key].active():
+                continue
 
-        # Prune connlist
-        for idx in range(len(self.connlist)-1, -1, -1):
-            if self.connlist[idx].expired and self.connlist[idx].src_proc and self.connlist[idx].dst_proc:
-                del self.connlist[idx]
+            # conn no longer active -> delete from lookup
+            del self.lookup[key]
 
-    def get_connkey(self, proto, src, dst, sport, dport):
+    def bind_conn_to_aud(self, ce):
+        self.ah.local_ips.add(ce.local_ip)
+        self.ah.aud.add_record(ce.get_acl_key(), ce)
+
+
+    def connkeygen(self, proto, src, dst, sport, dport):
         if sport < dport:
             src, dst = dst, src
             sport, dport = dport, sport
-        return ConnKey(proto, src, dst, sport, dport)
+        return ConnKey(proto, str(src), str(dst), sport, dport)
 
-    def add(self, t, direction, plen, src, dst, proto, sport, dport, flags):
+    def record(self, pkt):
+        l3hdr, l4hdr = pkt
 
-        flags = Flags(True if "syn" in flags else False,
-                      True if "ack" in flags else False)
+        try:
+            sport, dport = l4hdr.sport, l4hdr.dport
+        except AttributeError:
+            # L4 protocols without port numbers, e.g. ICMP
+            sport, dport = -1, -1
 
-        key = self.get_connkey(proto, src, dst, sport, dport)
+        key = self.connkeygen(l3hdr.proto, l3hdr.src, l3hdr.dst, sport, dport)
 
         if key not in self.lookup:
-            ce = ConnEntry(key, 4, t)
-            self.connlist.append(ce)
-            self.lookup[key] = self.connlist[-1]
+            entry = ConnEntry(key, l3hdr, l4hdr)
+            self.conns.append(entry)
+            self.lookup[key] = self.conns[-1]
+            self.bind_conn_to_aud(entry)
 
-        self.lookup[key].append(direction, plen, t, flags)
+        direction = 0 if l3hdr.direction == 0 else 1
+
+        self.lookup[key].append(direction, l3hdr.ts, l3hdr.length, (None, None)) # TODO: flags
 
 
     def aggregate(self):
+        acl_keys = set()
 
-        acl_from = set()
-        acl_to = set()
-
-        for conn in self.connlist:
+        for conn in self.conns:
             if conn.key.src_addr == conn.key.dst_addr:
                 continue
+            acl_keys.add(conn.get_acl_key())
 
-            if conn.key.src_addr in self.aud.local_ips:
-                acl_from.add(aud.ACLKey(ip_ver=4, direction="from", proto=conn.key.proto,
-                                        addr=conn.key.dst_addr, svc_port=conn.key.dst_port))
-
-            if conn.key.dst_addr in self.aud.local_ips:
-                acl_to.add(aud.ACLKey(ip_ver=4, direction="to", proto=conn.key.proto,
-                                      addr=conn.key.src_addr, svc_port=conn.key.dst_port))
-
-        return acl_from, acl_to
+        return acl_keys
 
 
 class ConnEntry():
-    def __init__(self, key, ip_ver, t0):
+    def __init__(self, key, l3hdr, l4hdr): #ip_ver, t0):
         self.key = key
-        self.ip_ver = ip_ver
-        self.expired = False
-        self.src_proc = False
-        self.dst_proc = False
-        self.created = t0
-        self.last_updated = t0
-        self.timeseries = [aud.IntervalSerie(t0),
-                           aud.IntervalSerie(t0)]
+
+        if l3hdr.direction == pr.socket.PACKET_HOST:
+            self.acl_direction = "to"
+            self.acl_addr = l3hdr.src
+            self.local_ip = l3hdr.dst
+
+        elif l3hdr.direction == pr.socket.PACKET_OUTGOING:
+            self.acl_direction = "from"
+            self.acl_addr = l3hdr.dst
+            self.local_ip = l3hdr.src
+
+        if isinstance(l4hdr, pr.TCPHeader):
+            self.timeout = 600
+        elif isinstance(l4hdr, pr.UDPHeader):
+            self.timeout = 120
+        elif isinstance(l4hdr, pr.ICMPHeader):
+            self.timeout = 30
+        else:
+            self.timeout = 60
+
+        self.created = l3hdr.ts
+        self.last_updated = l3hdr.ts
+        self.last_accounted = 0
+        self.data = aud.DataSeriesContainer(l3hdr.ts)
+
 
     def __str__(self):
-        count = 0
-        out = str(self.key)+"\n"
-        out += "    expired: "+str(self.expired)+"\n"
-        out += "    created: "+str(self.created)+"\n"
-        out += "    updated: "+str(self.last_updated)+"\n"
-        out += "    self.getrefcount: "+str(sys.getrefcount(self))+"\n"
-        #out += "    src proc: "+str(self.src_proc)+"\n"
-        #out += "    dst proc: "+str(self.dst_proc)+"\n"
-        for serie in self.timeseries:
-            out += "    serie "+str(count)+": "+str(serie)+"\n"
-            count += 1
-        return out
+        return str(self.key)+", active="+str(self.active())
 
-    def append(self, idx, plen, t, flags):
+    def active(self):
+        return (self.last_updated > (time.time_ns() - (self.timeout * 1000000000)))
+
+    def get_acl_key(self):
+        return aud.ACLKey(ip_ver = self.local_ip.version,
+                          direction = self.acl_direction,
+                          proto = self.key.proto,
+                          addr = self.acl_addr,
+                          svc_port = self.key.dst_port)
+
+    def append(self, direction, t, plen, flags):
+        self.data.append(direction, t, plen)
         self.last_updated = t
-        self.timeseries[idx].append(plen, t, flags)

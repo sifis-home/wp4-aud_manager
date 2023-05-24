@@ -1,10 +1,17 @@
-import os, time
+import os, time, uuid
 import math, statistics
+#import numpy as np
+import itertools
+from datetime import datetime
 from collections import Counter, deque
 from typing import NamedTuple
 
 import aud_file
 
+l4proto = {1: "ICMP",
+           2: "IGMP",
+           6: "TCP",
+           17: "UDP"}
 
 class ACLKey(NamedTuple):
     ip_ver: int
@@ -14,178 +21,322 @@ class ACLKey(NamedTuple):
     svc_port: int
 
 
-class IntervalSerie():
-    def __init__(self, t0):
-        self.created = t0
-        self.intervals = deque(maxlen=250)
+class Anomaly():
+    def __init__(self, category=None, conn=None):
+        self.time = datetime.now().replace(microsecond=0)
+        self.uuid = uuid.uuid4()
+        self.category = category
+        self.conn = conn
 
     def __str__(self):
-        return str(self.intervals)
+        output  = "    uuid:     "+str(self.uuid)+"\n"
+        output += "    time:     "+str(self.time)+"\n"
+        output += "    category: "+str(self.category)+"\n"
+        output += "    conn:     "+str(self.conn)
+        return output
+
+    def as_dict(self):
+        acl_key = self.conn.get_acl_key()
+
+        return {
+            "uuid": str(self.uuid),
+            "time": str(self.time),
+            "category": str(self.category),
+            "details": {
+                "ip_ver": str(acl_key.ip_ver),
+                "direction": str(acl_key.direction),
+                "proto": l4proto[acl_key.proto],
+                "addr": str(acl_key.addr),
+                "svc_port": str(acl_key.svc_port),
+            }
+        }
+
+
+class TimeSeries():
+    def __init__(self):
+        self.time = []
+        self.value = []
+        self.direction = []
+
+    def __str__(self):
+        output = ""
+        for t, v, d in zip(self.time, self.value, self.direction):
+            output += "d: "+str(d)+"  |  t: "+str(t).rjust(10)+"  |  v: "+str(v).rjust(6)+"\n"
+        return output.rstrip()
+
+    def add(self, ts, val, direction):
+        self.time.append(ts)
+        self.value.append(val)
+        self.direction.append(direction)
 
     def length(self):
-        return len(self.intervals)
+        assert len(self.time) == len(self.value)
+        return len(self.time)
 
-    def append(self, plen, t, flags):
+    def pep(self):
+        return "".join(map(str, self.direction))
+
+
+
+class TimeSeriesAggregator():
+    def __init__(self):
+        self.samples = 0
+        self.last_updated = 0
+        self.timeseries = []
+
+        self.peps = [] # Packet Exchange Patterns
+
+
+    def __str__(self):
+        output = "TimeSeriesAggregator\n"
+        output += "sample size: "+str(self.samples)+"\n"
+        output += "last_updated: "+str(self.last_updated)+"\n"
+        output += "pep_distribution: "+str(self.pep_distribution())
+        return output
+
+
+    def add_ts(self, data):
+        self.timeseries.append(data)
+        self.samples += 1
+
+    def update(self):
+        self.stats_update()
+        self.pep_update()
+        self.last_updated = time.time()
+
+    def stats_update(self):
+        print("TODO: stats_update()")
+        pass
+
+
+    def pep_update(self):
+        self.peps = []
+        for ts in self.timeseries:
+            self.peps.append(ts.pep())
+
+    def pep_distribution(self):
+        return Counter(self.peps)
+
+
+"""
+class AggregatedTimeSeries(): #TimeSeries):
+    def __init__(self):
+        #super().__init__(aggregator=True)
+        #print(self.aggr)
+        self.samples = 0
+
+        self.mean_time = []
+        self.mean_value = []
+        self.std_time = []
+        self.std_value = []
+
+
+
+
+        self.agg_times = []
+        self.agg_values = []
+
+        self.dir_strings = []
+
+
+
+    def __str__(self):
+        output = "AggregatedTimeSeries\n"
+        output += "sample size: "+str(self.samples)+"\n"
+        #for d, t, t_std, v, v_std in zip(self.direction,
+        #                                 self.time, self.time_std,
+        #                                 self.value, self.value_std):
+        #    output += "d: "+str(d)+" t: "+str(t).rjust(10)+" ("+str(t_std)+") "
+        #    output += "d: "+str(d)+" t: "+str(v).rjust(6)+" ("+str(v_std)+")\n"
+
+        output += "agg_times:   "+str(self.agg_times)+"\n"
+        output += "agg_values:  "+str(self.agg_values)+"\n"
+        output += "dir_strings: "+str(self.dir_strings)
+        return output
+
+
+    def add_ts(self, data):
+        # data argument is of type TimeSeries
+
+        if data.length() > len(self.agg_times):
+            # extend aggregation arrays to the length of input timeserie
+            n = data.length() - len(self.agg_times)
+            self.agg_times.extend([[] for _ in range(n)])
+            self.agg_values.extend([[] for _ in range(n)])
+
+        for i in range(data.length()):
+            self.agg_times[i].append(data.time[i])
+            self.agg_values[i].append(data.value[i])
+
+        self.dir_strings.append(data.dir_to_str())
+        self.samples += 1
+
+
+    def update(self):
+        for t, v in zip(self.agg_times, self.agg_values):
+            self.mean_time.append(round(statistics.mean(t), 3))
+            self.mean_value.append(round(statistics.mean(v), 3))
+
+            # Calculate variance only if there are enough data values
+            if len(t) > 3:
+                self.std_time.append(round(statistics.stdev(t), 3))
+                self.std_value.append(round(statistics.stdev(v), 3))
+            else:
+                self.std_time.append(None)
+                self.std_value.append(None)
+
+
+    def dir_distribution(self):
+        return Counter(self.dir_strings)
+"""
+
+class DataSeriesContainer():
+    def __init__(self, t0):
+        self.created = t0
+        self.lastbucket = 0
+        #self.beginning = [TimeSeries(),
+        #                  TimeSeries()]
+
+        self.sample = TimeSeries()
+
+    def __str__(self):
+        output = "Sample:\n"+str(self.sample)
+        return output
+
+    def length(self, idx):
+        print("FIXTHIS, ref to beginning")
+        return self.beginning[idx].length()
+
+    def append(self, direction, t, plen):
         t -= self.created
-        self.intervals.append((t, plen, flags))
 
-    def get(self):
-        return list(self.intervals)
+        bucket_index = 0
 
+        if t < 10 * 1000000000:
+            # First 10 seconds of a flow are logged in more detail
+            #print("-> 10 second bucket (short term data)")
+
+            #if self.beginning[direction].length() < 5: # REMOVE THIS ONCE TESTING IS DONE
+            #    self.beginning[direction].add(t, plen)
+            if self.sample.length() < 10:
+                self.sample.add(t, plen, direction)
+
+
+        #elif t < 30 * 1000000000:
+        #    print("-> 30 second bucket")
+        #elif t < 60 * 1000000000:
+        #    print("-> 60 second bucket")
+        #elif t < 120 * 1000000000:
+        #    print("-> 120 second bucket")
+        #else:
+        #    idx = t // (300 * 1000000000)
+        #    print("-> 300 second bucket (idx="+str(idx)+")")
+
+        #self.dataseries[direction]
 
 
 class AUDRecord:
     def __init__(self):
-        ml = 1000
-
-        self.last_modified = None
-        self.samples_seen = 0
-
-        self.last_event_time = 0
-        self.event_times = deque(maxlen=ml)
-        self.initial_pkt_sizes = deque(maxlen=ml)
-
-        self.pkts = (deque(maxlen=100),
-                     deque(maxlen=100))
-
-        self.plens = (deque(maxlen=100),
-                      deque(maxlen=100))
-
-        self.flags = (deque(maxlen=100),
-                      deque(maxlen=100))
-
+        self.conn_counter = 0
+        self.conns = list()
+        self.aggregator = TimeSeriesAggregator()
+        self.pep_dist = None
 
     def __str__(self):
-        out = "                "+str(type(self))+"\n"
-        out += "                samples seen: "+str(self.samples_seen)+"\n"
-        out += "                event times: "+str(self.event_times)+"\n"
-        if self.samples_seen > 2:
-            out += self.get_digest()
-        return out
+        pad = "  "
+        output = ""
+        for conn in self.conns:
+            output += pad*4+str(conn)
+            output += str(conn.data)
+
+        return output
+
+    def add(self, conn):
+        self.conns.append(conn)
+        self.conn_counter += 1
 
 
-    def mean_and_std(self, array):
-        # TODO: Return an error if array length is less than 2
-        mean = round(statistics.mean(array), 3)
-        std = round(statistics.stdev(array), 3)
+    def calc_aggregate(self):
+        print("\n*** Debug section: calc_aggregate() ***")
 
-        return (mean, std)
+        for conn in self.conns:
+            print(conn)
+            print(conn.data)
 
+            #mean.add_ts(conn.data.beginning[0])
+            #self.aggregate.add_ts(conn.data.sample)
 
-    def flag_distribution(self, array):
-        syn, synack, ack, total = 0, 0, 0, 0
-
-        for f in array:
-            if f.syn and f.ack:
-                synack += 1
-            elif f.syn:
-                syn += 1
-            elif f.ack:
-                ack += 1
-
-            total += 1
-        return (syn, synack, ack, total)
+            self.aggregator.add_ts(conn.data.sample)
 
 
-    def get_digest(self):
-        out = ""
+        self.aggregator.update()
+        self.dir_dist = self.aggregator.pep_distribution()
 
-        interevent_times = list()
-        carry = -1
-
-        for this in sorted(self.event_times):
-            if carry > 0:
-                interevent_times.append(round((this - carry)/1000000, 3))
-            carry = this
-
-
-        out += "                interevent times: "+str(interevent_times)+"\n"
-        out += "                mean interval times:  %s   (std. = %s)\n" % self.mean_and_std(interevent_times)
-
-        out += "                mean packets (dir-0): %s   (std. = %s)\n" % self.mean_and_std(self.pkts[0])
-        out += "                mean packets (dir-1): %s   (std. = %s)\n" % self.mean_and_std(self.pkts[1])
-
-        out += "                mean plen (dir-0):    %s   (std. = %s)\n" % self.mean_and_std(self.plens[0])
-        out += "                mean plen (dir-1):    %s   (std. = %s)\n" % self.mean_and_std(self.plens[1])
-
-        fd = self.flag_distribution(self.flags[0])
-        out += "                flags (dir-0):\n"
-        out += "                    SYN     "+str(round((fd[0]/fd[3])*100, 2))+"%\n"
-        out += "                    SYN-ACK "+str(round((fd[1]/fd[3])*100, 2))+"%\n"
-        out += "                    ACK     "+str(round((fd[2]/fd[3])*100, 2))+"%\n"
-
-        fd = self.flag_distribution(self.flags[1])
-        out += "                flags (dir-1):\n"
-        out += "                    SYN     "+str(round((fd[0]/fd[3])*100, 2))+"%\n"
-        out += "                    SYN-ACK "+str(round((fd[1]/fd[3])*100, 2))+"%\n"
-        out += "                    ACK     "+str(round((fd[2]/fd[3])*100, 2))+"%\n"
-        return out
-
+        print(self.aggregator)
+        print(self.pep_dist)
 
 
 class AUD:
-    def __init__(self, ep, device_name):
-        self.ep = ep
-        self.name = device_name
-        self.last_updated = int(time.time())
+    def __init__(self):
+
+        self.global_conn_counter = 0
+        self.last_updated = 0
         self.initial = True
         self.records = dict()
-
+        self.anomalies = deque()
 
     def __str__(self):
-        output = "    AUD:\n"
-        output += "        initial: "+str(self.initial)+"\n"
-        output += "        last updated: "+str(self.last_updated)+"\n"
-        output += "        records:\n"
+        pad = "  "
+        output = pad+"AUD:\n"
+        output += pad*2+"initial: "+str(self.initial)+"\n"
+        output += pad*2+"last updated: "+str(self.last_updated)+"\n"
+        output += pad*2+"global conn counter: "+str(self.global_conn_counter)+"\n"
+        output += pad*2+"records:\n"
+
         for key, val in self.records.items():
+            output += pad*3+str(key)+", prevalence="
+            output += str(round((val.conn_counter/self.global_conn_counter)*100, 2))+"%\n"
+            output += str(val)+"\n"
+        output += "Anomalies:\n"
+        for anomaly in self.anomalies:
+            output += str(anomaly)
+
+        """
+        output += "        ACL \"from\":\n"
+        for key, val in self.acl_from.items():
             output += "            "+str(key)+":\n"
-            output += str(val)
+            output += str(val)+"\n"
+
+        output += "        ACL \"to\":\n"
+        for key, val in self.acl_to.items():
+            output += "            "+str(key)+":\n"
+            output += str(val)+"\n"
+        """
         return output
 
-
-    def update_records(self, key, conns):
+    def add_record(self, key, entry):
+        self.global_conn_counter += 1
         if key not in self.records:
+            print(" -> key "+str(key)+" not in "+str(self.records))
             self.records[key] = AUDRecord()
+            self.anomalies.append(Anomaly(category="first-of-its-kind", conn=entry))
+        self.records[key].add(entry)
 
-        rec = self.records[key]
+    def update(self):
+        print("aud.py:update()")
+        self.last_updated = int(time.time())
 
-        while len(conns) > 0:
-            conn = conns.pop()
-
-            rec.samples_seen += 1
-            rec.event_times.append(conn.created)
-
-            for i in (0, 1):
-                rec.pkts[i].append(conn.timeseries[i].length())
-                rec.plens[i].append(sum(plen for t, plen, f in conn.timeseries[i].get()))
-                for datapoint in conn.timeseries[i].get():
-                    rec.flags[i].append(datapoint[2])
-
-            # indicate that processing on our behalf has been done
-            if key.direction == "to":
-                conn.dst_proc = True
-            elif key.direction == "from":
-                conn.src_proc = True
+        for key in self.records.keys():
+            print(str(key))
+            self.records[key].calc_aggregate()
 
 
-    def export_aud_model(self):
-        # TODO
-        pass
+    def anomaly_wrapper(self):
+        return [anomaly.as_dict() for anomaly in self.anomalies]
 
+    def anomaly_iterator(self):
+        for anomaly in self.anomalies:
+            yield anomaly.as_dict()
 
-    def export_aud_file(self):
-
-        aces = {("ipv4", "from"): [],
-                ("ipv4", "to"): [],
-                ("ipv6", "from"): [],
-                ("ipv6", "to"): []}
-
-        for entry, _ in self.records.items():
-            key = ("ipv"+str(entry.ip_ver), entry.direction)
-            value = (entry.proto, entry.addr, entry.svc_port)
-            aces[key].append(value)
-
-        af = aud_file.AUDFile(self.ep.handle)
-        af.add_aces(aces)
-
-        return af.assemble_mud()
+    def evaluate(self, conn):
+        print(" *** Evaluate: "+str(conn)+" ***")
