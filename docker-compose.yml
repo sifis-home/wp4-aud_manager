@@ -1,0 +1,14 @@
+version: "3"
+
+services:
+  aud_sensor:
+    image: ghcr.io/sifis-home/wp4-aud_sensor:latest
+    network_mode: host
+    ports:
+      - 6060:6060/tcp
+
+  watchtower:
+    image: containrrr/watchtower
+    command: --interval 30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
