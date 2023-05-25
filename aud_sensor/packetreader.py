@@ -77,6 +77,10 @@ class PacketReader(threading.Thread):
             if not l3hdr:
                 continue
 
+            if not (l3hdr.direction == socket.PACKET_HOST or
+                    l3hdr.direction == socket.PACKET_OUTGOING):
+                continue
+
             seek += hlen
 
             if l3hdr.proto == 0x01:   # ICMP
