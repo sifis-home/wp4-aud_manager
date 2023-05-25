@@ -128,7 +128,7 @@ class ConnEntry():
 
 
     def __str__(self):
-        return str(self.key)+", direction="+str(self.direction)+", active="+str(self.active())
+        return str(self.key)+", active="+str(self.active())
 
     def active(self):
         return (self.last_updated > (time.time_ns() - (self.timeout * 1000000000)))
