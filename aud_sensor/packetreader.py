@@ -46,7 +46,8 @@ class PacketReader(threading.Thread):
         threading.Thread.__init__(self)
         self.buf = buf
         self.running = True
-        self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)) # ETH_P_ALL
+        self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0800)) # ETH_P_IP
+        #self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)) # ETH_P_ALL
 
     def stop(self):
         self.running = False

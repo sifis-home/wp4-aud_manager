@@ -32,6 +32,7 @@ class Anomaly():
         output += "    time:     "+str(self.time)+"\n"
         output += "    category: "+str(self.category)+"\n"
         output += "    conn:     "+str(self.conn)
+        output += "        initial_pkt:     "+str(self.conn.initial_pkt)
         return output
 
     def as_dict(self):
@@ -129,8 +130,9 @@ class DataSeriesContainer():
         self.buckets = []
 
     def __str__(self):
-        output = "Sample:\n"+str(self.sample)
-        return output
+        #output = "Sample:\n"+str(self.sample)
+        #return output
+        return str(self)
 
     def length(self, idx):
         print("FIXTHIS, ref to beginning")
@@ -173,8 +175,8 @@ class AUDRecord:
         print("\n*** Debug section: calc_aggregate() ***")
 
         for conn in self.conns:
-            print(conn)
-            print(conn.data)
+            #print(conn)
+            #print(conn.data)
 
             self.aggregator.add_ts(conn.data.sample)
 
@@ -182,8 +184,8 @@ class AUDRecord:
         self.aggregator.update()
         self.dir_dist = self.aggregator.pep_distribution()
 
-        print(self.aggregator)
-        print(self.pep_dist)
+        #print(self.aggregator)
+        #print(self.pep_dist)
 
 
 class AUD:
@@ -216,17 +218,17 @@ class AUD:
     def add_record(self, key, entry):
         self.global_conn_counter += 1
         if key not in self.records:
-            print(" -> key "+str(key)+" not in "+str(self.records))
+            #print(" -> key "+str(key)+" not in "+str(self.records))
             self.records[key] = AUDRecord()
             self.anomalies.append(Anomaly(category="first-of-its-kind", conn=entry))
         self.records[key].add(entry)
 
     def update(self):
-        print("aud.py:update()")
+        #print("aud.py:update()")
         self.last_updated = int(time.time())
 
         for key in self.records.keys():
-            print(str(key))
+            #print(str(key))
             self.records[key].calc_aggregate()
 
     def anomaly_wrapper(self):
