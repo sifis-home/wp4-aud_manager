@@ -50,8 +50,6 @@ class AUDSensor(threading.Thread):
         return out
 
     def status(self):
-        #print(self.aud.anomaly_wrapper())
-        #print([a for a in self.aud.anomaly_iterator()])
         res = {
             "RequestPostTopicUUID": {
                 "topic_name": "SIFIS:AUD_Manager_Results",
@@ -59,6 +57,7 @@ class AUDSensor(threading.Thread):
                 "value": {
                     "description": "aud_sensor",
                 },
+                "local_ip": [str(ip) for ip in self.local_ips],
                 "anomalies": self.aud.anomaly_wrapper(),
 
             }
@@ -104,7 +103,7 @@ class AUDSensor(threading.Thread):
         self.stop()
 
     def log_notify(self, message):
-        self.log.append(str(datetime.now().strftime("[%d/%b/%Y %H:%M:%S] "))+message)
+        self.log.append(str(datetime.now().strftime("[%d/%b/%Y %H:%M:%S] "))+str(message))
 
     def log_anomaly(self, direction, addr, port, proto):
         a, b = "from", "to"
@@ -129,6 +128,8 @@ class AUDSensor(threading.Thread):
 
         self.aud.update()
 
+    def response(self, res):
+        return json.dumps({"response": str(res)})
 
 
 aud_sensor = AUDSensor()
@@ -138,16 +139,16 @@ app = Flask(__name__)
 @app.route("/start")
 def apicall_aud_sensor_start():
     if aud_sensor.running:
-        return "Already running. Doing nothing.\n"
+        return aud_sensor.response("Already running. Doing nothing.")
     if aud_sensor.start_t is not None:
-        return "Cannot stop-start old thread. Re-run the parent program.\n"
+        return aud_sensor.response("Cannot stop-start old thread. Re-run the parent program.")
     aud_sensor.start()
-    return "OK\n"
+    return aud_sensor.response("OK")
 
 @app.route("/stop")
 def apicall_aud_sensor_stop():
     aud_sensor.stop()
-    return "OK\n"
+    return aud_sensor.response("OK")
 
 @app.route("/status")
 def apicall_aud_sensor_status():

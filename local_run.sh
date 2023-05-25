@@ -11,8 +11,6 @@ docker_run() {
 }
 
 
-
-
 sudo -v
 
 case "$1" in

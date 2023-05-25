@@ -12,8 +12,6 @@ class ConnKey(NamedTuple):
     proto: int
     src_addr: str
     dst_addr: str
-    #src_addr: ipaddress.ip_address
-    #dst_addr: ipaddress.ip_address
     src_port: int
     dst_port: int
 
@@ -64,6 +62,11 @@ class ConnList():
 
     def record(self, pkt):
         l3hdr, l4hdr = pkt
+
+        if l3hdr.src.is_loopback or l3hdr.dst.is_loopback:
+            return
+        elif l3hdr.src == l3hdr.dst:
+            return
 
         try:
             sport, dport = l4hdr.sport, l4hdr.dport

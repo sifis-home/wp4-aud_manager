@@ -1,7 +1,7 @@
 import os, time, uuid
 import math, statistics
-#import numpy as np
 import itertools
+
 from datetime import datetime
 from collections import Counter, deque
 from typing import NamedTuple
@@ -19,7 +19,6 @@ class ACLKey(NamedTuple):
     proto: int
     addr: str
     svc_port: int
-
 
 class Anomaly():
     def __init__(self, category=None, conn=None):
@@ -51,6 +50,13 @@ class Anomaly():
             }
         }
 
+class Bucket():
+    def __init__(self):
+        self.values = []
+
+    def add(self, val):
+        self.values.append(val)
+
 
 class TimeSeries():
     def __init__(self):
@@ -77,13 +83,11 @@ class TimeSeries():
         return "".join(map(str, self.direction))
 
 
-
 class TimeSeriesAggregator():
     def __init__(self):
         self.samples = 0
         self.last_updated = 0
         self.timeseries = []
-
         self.peps = [] # Packet Exchange Patterns
 
 
@@ -118,86 +122,11 @@ class TimeSeriesAggregator():
         return Counter(self.peps)
 
 
-"""
-class AggregatedTimeSeries(): #TimeSeries):
-    def __init__(self):
-        #super().__init__(aggregator=True)
-        #print(self.aggr)
-        self.samples = 0
-
-        self.mean_time = []
-        self.mean_value = []
-        self.std_time = []
-        self.std_value = []
-
-
-
-
-        self.agg_times = []
-        self.agg_values = []
-
-        self.dir_strings = []
-
-
-
-    def __str__(self):
-        output = "AggregatedTimeSeries\n"
-        output += "sample size: "+str(self.samples)+"\n"
-        #for d, t, t_std, v, v_std in zip(self.direction,
-        #                                 self.time, self.time_std,
-        #                                 self.value, self.value_std):
-        #    output += "d: "+str(d)+" t: "+str(t).rjust(10)+" ("+str(t_std)+") "
-        #    output += "d: "+str(d)+" t: "+str(v).rjust(6)+" ("+str(v_std)+")\n"
-
-        output += "agg_times:   "+str(self.agg_times)+"\n"
-        output += "agg_values:  "+str(self.agg_values)+"\n"
-        output += "dir_strings: "+str(self.dir_strings)
-        return output
-
-
-    def add_ts(self, data):
-        # data argument is of type TimeSeries
-
-        if data.length() > len(self.agg_times):
-            # extend aggregation arrays to the length of input timeserie
-            n = data.length() - len(self.agg_times)
-            self.agg_times.extend([[] for _ in range(n)])
-            self.agg_values.extend([[] for _ in range(n)])
-
-        for i in range(data.length()):
-            self.agg_times[i].append(data.time[i])
-            self.agg_values[i].append(data.value[i])
-
-        self.dir_strings.append(data.dir_to_str())
-        self.samples += 1
-
-
-    def update(self):
-        for t, v in zip(self.agg_times, self.agg_values):
-            self.mean_time.append(round(statistics.mean(t), 3))
-            self.mean_value.append(round(statistics.mean(v), 3))
-
-            # Calculate variance only if there are enough data values
-            if len(t) > 3:
-                self.std_time.append(round(statistics.stdev(t), 3))
-                self.std_value.append(round(statistics.stdev(v), 3))
-            else:
-                self.std_time.append(None)
-                self.std_value.append(None)
-
-
-    def dir_distribution(self):
-        return Counter(self.dir_strings)
-"""
-
 class DataSeriesContainer():
     def __init__(self, t0):
         self.created = t0
-        self.lastbucket = 0
-        #self.beginning = [TimeSeries(),
-        #                  TimeSeries()]
-
         self.sample = TimeSeries()
+        self.buckets = []
 
     def __str__(self):
         output = "Sample:\n"+str(self.sample)
@@ -210,29 +139,13 @@ class DataSeriesContainer():
     def append(self, direction, t, plen):
         t -= self.created
 
-        bucket_index = 0
+        if self.sample.length() < 20:
+            # sample beginning of flow
+            self.sample.add(t, plen, direction)
 
         if t < 10 * 1000000000:
-            # First 10 seconds of a flow are logged in more detail
-            #print("-> 10 second bucket (short term data)")
-
-            #if self.beginning[direction].length() < 5: # REMOVE THIS ONCE TESTING IS DONE
-            #    self.beginning[direction].add(t, plen)
-            if self.sample.length() < 10:
-                self.sample.add(t, plen, direction)
-
-
-        #elif t < 30 * 1000000000:
-        #    print("-> 30 second bucket")
-        #elif t < 60 * 1000000000:
-        #    print("-> 60 second bucket")
-        #elif t < 120 * 1000000000:
-        #    print("-> 120 second bucket")
-        #else:
-        #    idx = t // (300 * 1000000000)
-        #    print("-> 300 second bucket (idx="+str(idx)+")")
-
-        #self.dataseries[direction]
+            # long-term evolution of flow, TBI
+            pass
 
 
 class AUDRecord:
@@ -262,9 +175,6 @@ class AUDRecord:
         for conn in self.conns:
             print(conn)
             print(conn.data)
-
-            #mean.add_ts(conn.data.beginning[0])
-            #self.aggregate.add_ts(conn.data.sample)
 
             self.aggregator.add_ts(conn.data.sample)
 
@@ -301,17 +211,6 @@ class AUD:
         for anomaly in self.anomalies:
             output += str(anomaly)
 
-        """
-        output += "        ACL \"from\":\n"
-        for key, val in self.acl_from.items():
-            output += "            "+str(key)+":\n"
-            output += str(val)+"\n"
-
-        output += "        ACL \"to\":\n"
-        for key, val in self.acl_to.items():
-            output += "            "+str(key)+":\n"
-            output += str(val)+"\n"
-        """
         return output
 
     def add_record(self, key, entry):
@@ -329,7 +228,6 @@ class AUD:
         for key in self.records.keys():
             print(str(key))
             self.records[key].calc_aggregate()
-
 
     def anomaly_wrapper(self):
         return [anomaly.as_dict() for anomaly in self.anomalies]
