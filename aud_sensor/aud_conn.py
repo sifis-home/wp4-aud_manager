@@ -102,14 +102,12 @@ class ConnEntry():
     def __init__(self, key, l3hdr, l4hdr): #ip_ver, t0):
         self.key = key
 
-        self.direction = l3hdr.direction
         if l3hdr.direction == pr.socket.PACKET_HOST:
             self.acl_direction = "to"
             self.acl_addr = l3hdr.src
             self.local_ip = l3hdr.dst
 
-        #elif l3hdr.direction == pr.socket.PACKET_OUTGOING:
-        else:
+        elif l3hdr.direction == pr.socket.PACKET_OUTGOING:
             self.acl_direction = "from"
             self.acl_addr = l3hdr.dst
             self.local_ip = l3hdr.src
