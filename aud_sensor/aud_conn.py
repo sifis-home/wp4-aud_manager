@@ -50,7 +50,7 @@ class ConnList():
             del self.lookup[key]
 
     def bind_conn_to_aud(self, ce):
-        self.ah.local_ips.add(ce.local_ip)
+        #self.ah.local_ips.add(ce.local_ip)
         self.ah.aud.add_record(ce.get_acl_key(), ce)
 
 
@@ -64,6 +64,9 @@ class ConnList():
         l3hdr, l4hdr = pkt
 
         if l3hdr.src.is_loopback or l3hdr.dst.is_loopback:
+            return
+        elif not (l3hdr.src in self.ah.local_ips or
+                  l3hdr.dst in self.ah.local_ips):
             return
         elif l3hdr.src == l3hdr.dst:
             return
@@ -101,7 +104,7 @@ class ConnList():
 class ConnEntry():
     def __init__(self, key, l3hdr, l4hdr): #ip_ver, t0):
         self.key = key
-
+        print("New ConnEntry: "+str(l3hdr)+", "+str(l4hdr))
         if l3hdr.direction == pr.socket.PACKET_HOST:
             self.acl_direction = "to"
             self.acl_addr = l3hdr.src
@@ -111,7 +114,7 @@ class ConnEntry():
             self.acl_direction = "from"
             self.acl_addr = l3hdr.dst
             self.local_ip = l3hdr.src
-
+        print("  --> local IP: "+str(self.local_ip))
         if isinstance(l4hdr, pr.TCPHeader):
             self.timeout = 600
         elif isinstance(l4hdr, pr.UDPHeader):
@@ -121,6 +124,7 @@ class ConnEntry():
         else:
             self.timeout = 60
 
+        self.initial_pkt = (l3hdr, l4hdr)
         self.created = l3hdr.ts
         self.last_updated = l3hdr.ts
         self.last_accounted = 0

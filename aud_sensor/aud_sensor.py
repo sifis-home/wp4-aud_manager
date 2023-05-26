@@ -32,6 +32,7 @@ class AUDSensor(threading.Thread):
 
         self.raw_buf = deque()
         self.reader = pr.PacketReader(self.raw_buf)
+        self.local_ips.add(self.reader.get_local_ip_addr())
 
     def __str__(self):
         pad = "  "
@@ -45,7 +46,7 @@ class AUDSensor(threading.Thread):
 
         out += pad+"my IPs: "+str(self.local_ips)+"\n"
         out += pad+"connlist length: "+str(len(self.connlist.conns))+"\n"
-        out += str(self.aud)
+        #out += str(self.aud)
 
         return out
 
@@ -84,7 +85,6 @@ class AUDSensor(threading.Thread):
             self.connlist.cleanup()
 
             if aud_update_t < time.time():
-                print("*** AUD update time ***")
                 self.aud_update()
                 aud_update_t = time.time() + self.aud_update_interval
 
