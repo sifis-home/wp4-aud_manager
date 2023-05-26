@@ -46,8 +46,7 @@ class PacketReader(threading.Thread):
         threading.Thread.__init__(self)
         self.buf = buf
         self.running = True
-        self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0800)) # ETH_P_IP
-        #self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)) # ETH_P_ALL
+        self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)) # ETH_P_ALL
 
     def stop(self):
         self.running = False
@@ -123,3 +122,11 @@ class PacketReader(threading.Thread):
     def parse_udp_header(self, data):
         sport, dport, length = struct.unpack("! H H H 2x", data[:8])
         return UDPHeader(sport, dport, length)
+
+    def get_local_ip_addr(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Might want to catch an exception in case connect and/or getsockname fails
+        s.connect(("8.8.8.8", 80))
+        ipaddr = ipaddress.ip_address(s.getsockname()[0])
+        s.close()
+        return ipaddr

@@ -32,6 +32,7 @@ class AUDSensor(threading.Thread):
 
         self.raw_buf = deque()
         self.reader = pr.PacketReader(self.raw_buf)
+        self.local_ips.add(self.reader.get_local_ip_addr())
 
     def __str__(self):
         pad = "  "

@@ -2,7 +2,7 @@ name: aud_sensor
 
 on:
   push:
-    branches: [ "dev" ]
+    branches: [ "master" ]
     tags: [ 'v*.*.*' ]
 
 jobs:

@@ -110,7 +110,6 @@ class TimeSeriesAggregator():
         self.last_updated = time.time()
 
     def stats_update(self):
-        print("TODO: stats_update()")
         pass
 
 
@@ -172,7 +171,7 @@ class AUDRecord:
 
 
     def calc_aggregate(self):
-        print("\n*** Debug section: calc_aggregate() ***")
+        #print("\n*** Debug section: calc_aggregate() ***")
 
         for conn in self.conns:
             #print(conn)
@@ -183,9 +182,6 @@ class AUDRecord:
 
         self.aggregator.update()
         self.dir_dist = self.aggregator.pep_distribution()
-
-        #print(self.aggregator)
-        #print(self.pep_dist)
 
 
 class AUD:
@@ -220,7 +216,7 @@ class AUD:
         if key not in self.records:
             #print(" -> key "+str(key)+" not in "+str(self.records))
             self.records[key] = AUDRecord()
-            self.anomalies.append(Anomaly(category="first-of-its-kind", conn=entry))
+            self.anomalies.append(Anomaly(category="NovelFlow", conn=entry))
         self.records[key].add(entry)
 
     def update(self):
