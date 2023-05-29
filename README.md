@@ -1,6 +1,3 @@
-# !!! This documentation is severely outdated !!!
-
-
 # WP4 Analytic: AUD Manager
 
 
@@ -8,38 +5,13 @@
 
 ### AUD Manager in a container
 
-AUD Manager is intended to run in a docker container. The Dockerfile at the root of this repo describes the container. Building and executing it should be as simple as:
+AUD Manager is intended to run in a docker container. The Dockerfile at the root of this repo describes the container. To fetch the latest container image from `ghcr.io` and run it execute the following:
 
-    $ docker build -t aud_manager .
-    $ docker run -d --cap-add NET_ADMIN --net sifis_net         \
-          --privileged --ip 172.18.10.2 --publish 5000:5000     \
-          --mount type=bind,source="/tmp/aud",target="/tmp/aud" \
-          --name aud_manager aud_manager
+`docker-compose up`
 
-Note that data acquisition (described below) has to be in place before starting the container.
+For developement purposes one may want to build and run the container locally. To do that use the enclosed wrapper script as follows:
 
-### Description of data acquisition
-
-AUD Manager gets its input data through nflog. However, due to the network isolation of docker an nflog iptable tap/rule cannot be done inside a container. A suitable place to add the rule in `filter` table's `DOCKER_USER` chain directly on the docker host machine, i.e., the WP5 panarea server. To convey the acquired packets to AUD Manager running inside a container we use a local socket (AF_UNIX) which we share through a volume. This functionality is implemented in `aud_manager/data_intake_modules/nflog_connector`. The integration diagram below illustrates this technical workaround.
-
-How to deploy nflog_connector (as superuser):
-
-    $ iptables -t filter -I DOCKER-USER -j NFLOG --nflog-group 7 --nflog-threshold 10
-    $ aud_manager/data_intake_modules/nflog_connector/nflog > /dev/null &
-
-
-
-
-## AUD Manager system integration diagram
-
-![AUD Manager system integration diagram](assets/aud_manager_system_diagram.drawio.svg)
-
-
-
-## Startup wrapper "aud_control.sh"
-
-This script is for controlling local startup and teardown. It is mostly useful while developing the analytic, but may also be used as a reference on how AUD Manager is intended to run.
-
+`./local_run.sh docker`
 
 
 ## REST API of AUD Manager
@@ -52,7 +24,7 @@ Description of the various REST endpoint available while AUD Manager is running.
 
 Description: Start the internal network analytic.
 
-Sample: `curl http://aud_manager:5000/start`
+Sample: `curl http://aud_manager:6060/start`
 
 ---
 
@@ -60,36 +32,30 @@ Sample: `curl http://aud_manager:5000/start`
 
 Description: Stop the internal network analytic.
 
-Sample: `curl http://aud_manager:5000/stop`
+Sample: `curl http://aud_manager:6060/stop`
 
 ---
 
 #### GET /status
 
-Description: Return the status of the currently running analytic.
+Description: Return the status of the currently running analytic, including a summary of recenty anomalies.
 
-Sample: `curl http://aud_manager:5000/status`
-
----
-
-#### GET /connlist
-
-Description: Return a list of all connections tracked by the analytic.
-
-Sample: `curl http://aud_manager:5000/connlist`
+Sample: `curl http://aud_manager:6060/status`
 
 ---
 
-#### GET /endpoints
+#### GET /mark-benign/{anomaly_uuid}
 
-Description: Return a list of all endpoints (i.e., hosts) that the analytic has seen since the analytic was started.
+Description: Stop the internal network analytic.
 
-Sample: `curl http://aud_manager:5000/endpoints`
+Sample: `curl http://aud_manager:6060/mark-benign/00000000-1234-1234-1234-123456789012`
 
 ---
 
-#### GET /aud-file/{ip}
+## REST API endpoints for development use only
 
-Description: Return a JSON object representing the current AUD file for the given IP. Protocol version can be either v4 or v6.
+#### GET /dev/diag
 
-Sample: `curl http://aud_manager:5000/aud-file/172.18.10.123`
+Description: Verbose output of analytic internals. JSON schema of the output is volatile and subject to change as the analytic is being developed.
+
+Sample: `curl http://aud_manager:6060/dev/diag`

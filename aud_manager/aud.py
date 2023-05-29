@@ -6,8 +6,6 @@ from datetime import datetime
 from collections import Counter, deque
 from typing import NamedTuple
 
-import aud_file
-
 l4proto = {1: "ICMP",
            2: "IGMP",
            6: "TCP",
@@ -25,6 +23,7 @@ class Anomaly():
         self.time = datetime.now().replace(microsecond=0)
         self.uuid = uuid.uuid4()
         self.category = category
+        self.score = 0.0
         self.conn = conn
 
     def __str__(self):
@@ -42,12 +41,13 @@ class Anomaly():
             "uuid": str(self.uuid),
             "time": str(self.time),
             "category": str(self.category),
+            "score": str(round(self.score, 3)),
             "details": {
-                "ip_ver": str(acl_key.ip_ver),
                 "direction": str(acl_key.direction),
-                "proto": l4proto[acl_key.proto],
+                "proto": l4proto[acl_key.proto]+":"+str(acl_key.svc_port),
                 "addr": str(acl_key.addr),
-                "svc_port": str(acl_key.svc_port),
+                "ip_ver": acl_key.ip_ver,
+                #"svc_port": str(acl_key.svc_port),
             }
         }
 
@@ -165,6 +165,12 @@ class AUDRecord:
 
         return output
 
+    def as_dict(self):
+        return {
+            "conn_counter": self.conn_counter,
+            "conns": [conn.as_dict() for conn in self.conns],
+        }
+
     def add(self, conn):
         self.conns.append(conn)
         self.conn_counter += 1
@@ -211,12 +217,24 @@ class AUD:
 
         return output
 
+    def as_dict(self):
+
+        res = {
+            "global_conn_counter": str(self.global_conn_counter),
+            "aud_records": [{"acl_key": str(key), "data": self.records[key].as_dict()} for key in self.records.keys()],
+        }
+        return res
+
+
     def add_record(self, key, entry):
         self.global_conn_counter += 1
         if key not in self.records:
             #print(" -> key "+str(key)+" not in "+str(self.records))
             self.records[key] = AUDRecord()
             self.anomalies.append(Anomaly(category="NovelFlow", conn=entry))
+        else:
+            print("New flow: "+str(key))
+            print("  --> Check for anomalies")
         self.records[key].add(entry)
 
     def update(self):

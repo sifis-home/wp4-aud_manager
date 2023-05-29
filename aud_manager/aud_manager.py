@@ -13,8 +13,8 @@ import aud_conn
 import packetreader as pr
 
 
-class AUDSensor(threading.Thread):
-    """Main thread for running AUD Sensor."""
+class AUDManager(threading.Thread):
+    """Main thread for running AUD Manager."""
 
     def __init__(self):
         threading.Thread.__init__(self)
@@ -36,7 +36,7 @@ class AUDSensor(threading.Thread):
 
     def __str__(self):
         pad = "  "
-        out = "*** AUD sensor ***\n"
+        out = "*** AUD manager ***\n"
         out += pad+"running: "+str(self.running)+"\n"
         out += pad+"learning: "+str(self.learning)+"\n"
         if self.running:
@@ -49,6 +49,10 @@ class AUDSensor(threading.Thread):
         #out += str(self.aud)
 
         return out
+    def as_dict(self):
+        return {
+            "aud": self.aud.as_dict(),
+        }
 
     def status(self):
         res = {
@@ -56,7 +60,7 @@ class AUDSensor(threading.Thread):
                 "topic_name": "SIFIS:AUD_Manager_Results",
                 "topic_uuid": "FIXTHIS",
                 "value": {
-                    "description": "aud_sensor",
+                    "description": "aud_manager",
                 },
                 "local_ip": [str(ip) for ip in self.local_ips],
                 "anomalies": self.aud.anomaly_wrapper(),
@@ -71,7 +75,7 @@ class AUDSensor(threading.Thread):
         self.reader.start()
 
         self.start_t = datetime.now()
-        self.log_notify("AUD sensor started")
+        self.log_notify("AUD manager started")
 
         # Clear buffer to avoid surge of packets at startup
         self.raw_buf.clear()
@@ -96,7 +100,7 @@ class AUDSensor(threading.Thread):
     def stop(self):
         self.running = False
         self.learning = False
-        self.log_notify("AUD sensor stopped")
+        self.log_notify("AUD manager stopped")
 
     def terminate(self):
         self.sigterm.set()
@@ -132,54 +136,54 @@ class AUDSensor(threading.Thread):
         return json.dumps({"response": str(res)})
 
 
-aud_sensor = AUDSensor()
+aud_manager = AUDManager()
 app = Flask(__name__)
 
 
 @app.route("/start")
-def apicall_aud_sensor_start():
-    if aud_sensor.running:
-        return aud_sensor.response("Already running. Doing nothing.")
-    if aud_sensor.start_t is not None:
-        return aud_sensor.response("Cannot stop-start old thread. Re-run the parent program.")
-    aud_sensor.start()
-    return aud_sensor.response("OK")
+def apicall_aud_manager_start():
+    if aud_manager.running:
+        return aud_manager.response("Already running. Doing nothing.")
+    if aud_manager.start_t is not None:
+        return aud_manager.response("Cannot stop-start old thread. Re-run the parent program.")
+    aud_manager.start()
+    return aud_manager.response("OK")
 
 @app.route("/stop")
-def apicall_aud_sensor_stop():
-    aud_sensor.stop()
-    return aud_sensor.response("OK")
+def apicall_aud_manager_stop():
+    aud_manager.stop()
+    return aud_manager.response("OK")
 
 @app.route("/status")
-def apicall_aud_sensor_status():
-    return str(aud_sensor.status())
+def apicall_aud_manager_status():
+    return str(aud_manager.status())
 
 @app.route("/log")
-def apicall_aud_sensor_log():
-    return "\n".join(aud_sensor.log)+"\n"
+def apicall_aud_manager_log():
+    return "\n".join(aud_manager.log)+"\n"
 
 # API endpoints for developer use
 @app.route("/dev/diag")
 def apicall_aud_dev_diag_status():
-    return str(aud_sensor)
+    return json.dumps(aud_manager.as_dict())
 
 @app.route("/dev/aud-update")
 def apicall_aud_dev_update():
-    return str(aud_sensor.aud_update())
+    return str(aud_manager.aud_update())
 
 @app.route("/dev/connlist")
 def apicall_aud_dev_connlist():
-    return str(aud_sensor.connlist)
+    return str(aud_manager.connlist)
 
 @app.route("/dev/force-stop-learning")
 def apicall_aud_dev_stop_learning():
-    return str(aud_sensor.stop_learning("via "+request.path))
+    return str(aud_manager.stop_learning("via "+request.path))
 
 
 def terminate(sig, frame):
-    if aud_sensor.running:
-        aud_sensor.terminate()
-        aud_sensor.join()
+    if aud_manager.running:
+        aud_manager.terminate()
+        aud_manager.join()
     sys.exit(0)
 
 
