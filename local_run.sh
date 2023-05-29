@@ -1,6 +1,6 @@
 #!/bin/bash -xe
 
-target="aud_sensor"
+target="aud_manager"
 
 docker_build() {
     docker build -t "$target" -f Dockerfile --load .

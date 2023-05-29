@@ -1,8 +1,8 @@
 version: "3"
 
 services:
-  aud_sensor:
-    image: ghcr.io/sifis-home/aud_sensor:latest
+  aud_manager:
+    image: ghcr.io/sifis-home/aud_manager:latest
     network_mode: host
     ports:
       - 6060:6060/tcp

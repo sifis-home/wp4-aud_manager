@@ -104,17 +104,17 @@ class ConnList():
 class ConnEntry():
     def __init__(self, key, l3hdr, l4hdr): #ip_ver, t0):
         self.key = key
-        print("New ConnEntry: "+str(l3hdr)+", "+str(l4hdr))
+        #print("New ConnEntry: "+str(l3hdr)+", "+str(l4hdr))
         if l3hdr.direction == pr.socket.PACKET_HOST:
-            self.acl_direction = "to"
+            self.acl_direction = "inbound" # to
             self.acl_addr = l3hdr.src
             self.local_ip = l3hdr.dst
 
         elif l3hdr.direction == pr.socket.PACKET_OUTGOING:
-            self.acl_direction = "from"
+            self.acl_direction = "outbound" # from
             self.acl_addr = l3hdr.dst
             self.local_ip = l3hdr.src
-        print("  --> local IP: "+str(self.local_ip))
+        #print("  --> local IP: "+str(self.local_ip))
         if isinstance(l4hdr, pr.TCPHeader):
             self.timeout = 600
         elif isinstance(l4hdr, pr.UDPHeader):
@@ -133,6 +133,14 @@ class ConnEntry():
 
     def __str__(self):
         return str(self.key)+", active="+str(self.active())
+
+    def as_dict(self):
+        return {
+            "key": str(self.key),
+            "created": str(self.created),
+            "acl_direction": str(self.acl_direction),
+            "active": str(self.active()),
+        }
 
     def active(self):
         return (self.last_updated > (time.time_ns() - (self.timeout * 1000000000)))
