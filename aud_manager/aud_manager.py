@@ -1,7 +1,8 @@
 #!/usr/bin/python3
-import sys, threading, signal
+import sys, os, threading, signal
 import time, math, queue
 import json
+import logging
 
 from collections import deque
 from datetime import datetime, timedelta
@@ -12,18 +13,26 @@ import aud
 import aud_conn
 import packetreader as pr
 
+log_path = "/tmp/aud_manager.log"
 
 class AUDManager(threading.Thread):
     """Main thread for running AUD Manager."""
 
     def __init__(self):
         threading.Thread.__init__(self)
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s %(levelname)-8s [%(filename)s]: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            handlers=[
+                logging.FileHandler(log_path),
+                logging.StreamHandler()
+            ]
+        )
 
-        self.running = False
-        self.learning = False
-        self.start_t = None
+        self.running = True
+        self.start_t = datetime.now()
         self.sigterm = threading.Event()
-        self.log = list()
         self.local_ips = set()
 
         self.aud = aud.AUD()
@@ -31,8 +40,11 @@ class AUDManager(threading.Thread):
         self.connlist = aud_conn.ConnList(self)
 
         self.raw_buf = deque()
+
         self.reader = pr.PacketReader(self.raw_buf)
         self.local_ips.add(self.reader.get_local_ip_addr())
+
+        self.start()
 
     def __str__(self):
         pad = "  "
@@ -45,12 +57,14 @@ class AUDManager(threading.Thread):
             out += pad+"uptime: "+str(uptime)+"\n"
 
         out += pad+"my IPs: "+str(self.local_ips)+"\n"
-        out += pad+"connlist length: "+str(len(self.connlist.conns))+"\n"
+        #out += pad+"connlist length: "+str(len(self.connlist.conns))+"\n"
         #out += str(self.aud)
 
         return out
+
     def as_dict(self):
         return {
+            "connlist": self.connlist.as_dict(),
             "aud": self.aud.as_dict(),
         }
 
@@ -59,6 +73,7 @@ class AUDManager(threading.Thread):
             "RequestPostTopicUUID": {
                 "topic_name": "SIFIS:AUD_Manager_Results",
                 "topic_uuid": "FIXTHIS",
+                "AnalyticStarted": str(self.start_t.strftime("%d-%m-%Y %H:%M:%S")),
                 "value": {
                     "description": "aud_manager",
                 },
@@ -71,11 +86,9 @@ class AUDManager(threading.Thread):
 
     def run(self):
         self.running = True
-        self.learning = True
         self.reader.start()
 
-        self.start_t = datetime.now()
-        self.log_notify("AUD manager started")
+        logging.info("AUD manager started")
 
         # Clear buffer to avoid surge of packets at startup
         self.raw_buf.clear()
@@ -86,51 +99,38 @@ class AUDManager(threading.Thread):
             for i in range(len(self.raw_buf)):
                 self.connlist.record(self.raw_buf.popleft())
 
-            self.connlist.cleanup()
-
             if aud_update_t < time.time():
+                #logging.debug("connlist len before update: %d", len(self.connlist))
                 self.aud_update()
+                self.connlist.trim()
                 aud_update_t = time.time() + self.aud_update_interval
+                #logging.debug("connlist len after update: %d", len(self.connlist))
 
             time.sleep(0.1)
 
         self.reader.stop()
         self.reader.join()
 
+
     def stop(self):
         self.running = False
-        self.learning = False
-        self.log_notify("AUD manager stopped")
+        logging.info("AUD manager stopped")
 
     def terminate(self):
         self.sigterm.set()
         self.stop()
 
-    def log_notify(self, message):
-        self.log.append(str(datetime.now().strftime("[%d/%b/%Y %H:%M:%S] "))+str(message))
-
-    def log_anomaly(self, direction, addr, port, proto):
-        a, b = "from", "to"
-        if direction == "to": a, b = b, a
-
-        out = "Unknown flow "+a.upper()+" device "+b+" "+addr
-        out += ", svc_port="+str(port)+", protocol="+aud.l4proto[int(proto)]
-        out += " --> Queued for anomaly verdict"
-        self.log_notify(out)
-
     def stop_learning(self, msg):
         self.learning = False
-        self.log_notify("AUD learning ended ("+msg+")")
+        logging.debug("AUD learning ended, %s", str(msg))
         return "OK\n"
 
     def aud_update(self):
-        acl_keys = self.connlist.aggregate()
-
-        for key in acl_keys:
-            if key not in self.aud.records:
-                self.aud.records[key] = list()
-
-        self.aud.update()
+        logging.debug("aud_update() started")
+        start_t = time.time()
+        self.aud.update(self.connlist)
+        end_t = time.time()
+        logging.debug("aud_update() finished in %f seconds.", round((end_t - start_t), 3))
 
     def response(self, res):
         return json.dumps({"response": str(res)})
@@ -139,20 +139,9 @@ class AUDManager(threading.Thread):
 aud_manager = AUDManager()
 app = Flask(__name__)
 
+flasklog = logging.getLogger("werkzeug")
+flasklog.disabled = True
 
-@app.route("/start")
-def apicall_aud_manager_start():
-    if aud_manager.running:
-        return aud_manager.response("Already running. Doing nothing.")
-    if aud_manager.start_t is not None:
-        return aud_manager.response("Cannot stop-start old thread. Re-run the parent program.")
-    aud_manager.start()
-    return aud_manager.response("OK")
-
-@app.route("/stop")
-def apicall_aud_manager_stop():
-    aud_manager.stop()
-    return aud_manager.response("OK")
 
 @app.route("/status")
 def apicall_aud_manager_status():
@@ -160,7 +149,9 @@ def apicall_aud_manager_status():
 
 @app.route("/log")
 def apicall_aud_manager_log():
-    return "\n".join(aud_manager.log)+"\n"
+    with open(log_path, "r") as f:
+        content = f.read()
+    return content
 
 # API endpoints for developer use
 @app.route("/dev/diag")
@@ -184,6 +175,7 @@ def terminate(sig, frame):
     if aud_manager.running:
         aud_manager.terminate()
         aud_manager.join()
+    logging.info("Bye.")
     sys.exit(0)
 
 

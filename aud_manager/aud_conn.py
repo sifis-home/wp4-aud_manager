@@ -1,4 +1,5 @@
 import sys, time
+import logging
 import ipaddress
 
 from typing import NamedTuple
@@ -28,20 +29,16 @@ class ConnList():
 
         self.timeout = 60*1000000
 
-    def __str__(self):
-        out = "FIXTHIS ConnList:\n"
-        out += "  conns length: "+str(len(self.conns))+"\n"
-        out += "  lookup length: "+str(len(self.lookup))+"\n"
-        out += "  lookup:\n"
-        for key, conn in self.lookup.items():
-            out += "    "+str(conn.key)+"\n"
-        out += "  conns:\n"
-        for conn in self.conns:
-            out += "    "+str(conn.key)+"\n"
-            out += str(conn)+"\n"
-        return out
+    def __len__(self):
+        return len(self.conns)
 
-    def cleanup(self):
+    def as_dict(self):
+        res = {
+            "conns": [conn.as_dict() for conn in self.conns],
+        }
+        return res
+
+    def trim(self):
         for key in list(self.lookup.keys()):
             if self.lookup[key].active():
                 continue
@@ -49,10 +46,7 @@ class ConnList():
             # conn no longer active -> delete from lookup
             del self.lookup[key]
 
-    def bind_conn_to_aud(self, ce):
-        #self.ah.local_ips.add(ce.local_ip)
-        self.ah.aud.add_record(ce.get_acl_key(), ce)
-
+        self.conns[:] = [conn for conn in self.conns if not conn.marked_for_deletion]
 
     def connkeygen(self, proto, src, dst, sport, dport):
         if sport < dport:
@@ -83,14 +77,15 @@ class ConnList():
             entry = ConnEntry(key, l3hdr, l4hdr)
             self.conns.append(entry)
             self.lookup[key] = self.conns[-1]
-            self.bind_conn_to_aud(entry)
 
         direction = 0 if l3hdr.direction == 0 else 1
 
         self.lookup[key].append(direction, l3hdr.ts, l3hdr.length, (None, None)) # TODO: flags
 
+    def conns_by_acl_key(self, key):
+        return filter(lambda conn: conn.get_acl_key() == key, self.conns)
 
-    def aggregate(self):
+    def aggregate_acl_keys(self):
         acl_keys = set()
 
         for conn in self.conns:
@@ -102,9 +97,9 @@ class ConnList():
 
 
 class ConnEntry():
-    def __init__(self, key, l3hdr, l4hdr): #ip_ver, t0):
+    def __init__(self, key, l3hdr, l4hdr):
         self.key = key
-        #print("New ConnEntry: "+str(l3hdr)+", "+str(l4hdr))
+
         if l3hdr.direction == pr.socket.PACKET_HOST:
             self.acl_direction = "inbound" # to
             self.acl_addr = l3hdr.src
@@ -114,7 +109,7 @@ class ConnEntry():
             self.acl_direction = "outbound" # from
             self.acl_addr = l3hdr.dst
             self.local_ip = l3hdr.src
-        #print("  --> local IP: "+str(self.local_ip))
+
         if isinstance(l4hdr, pr.TCPHeader):
             self.timeout = 600
         elif isinstance(l4hdr, pr.UDPHeader):
@@ -124,22 +119,25 @@ class ConnEntry():
         else:
             self.timeout = 60
 
-        self.initial_pkt = (l3hdr, l4hdr)
-        self.created = l3hdr.ts
+        self.created_ns = l3hdr.ts
         self.last_updated = l3hdr.ts
         self.last_accounted = 0
-        self.data = aud.DataSeriesContainer(l3hdr.ts)
+        self.marked_for_deletion = False
+        self.data = aud.TimeSeries(l3hdr.ts)
+        self.category = aud.Category.Undefined
 
 
     def __str__(self):
-        return str(self.key)+", active="+str(self.active())
+        return str(self.key)+", id="+str(id(self))+" active="+str(self.active())+" mfd="+str(self.marked_for_deletion)
 
     def as_dict(self):
         return {
             "key": str(self.key),
-            "created": str(self.created),
+            "created_ns": str(self.created_ns),
             "acl_direction": str(self.acl_direction),
+            "category": str(self.category.name),
             "active": str(self.active()),
+            #"marked_for_deletion": str(self.marked_for_deletion),
         }
 
     def active(self):
@@ -153,5 +151,5 @@ class ConnEntry():
                           svc_port = self.key.dst_port)
 
     def append(self, direction, t, plen, flags):
-        self.data.append(direction, t, plen)
+        self.data.add(t, plen, direction)
         self.last_updated = t

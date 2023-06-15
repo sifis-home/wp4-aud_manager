@@ -3,7 +3,7 @@ FROM --platform=$BUILDPLATFORM alpine:3.11
 RUN apk --no-cache update   && \
     apk upgrade             && \
     apk add python3
-RUN pip3 install flask
+RUN pip3 install flask requests
 
 ARG TARGETPLATFORM
 ARG COMMIT_ID

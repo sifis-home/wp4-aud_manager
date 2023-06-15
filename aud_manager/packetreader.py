@@ -1,4 +1,5 @@
 import os, sys, time, threading
+import logging
 import socket
 import struct
 import binascii
@@ -129,4 +130,5 @@ class PacketReader(threading.Thread):
         s.connect(("8.8.8.8", 80))
         ipaddr = ipaddress.ip_address(s.getsockname()[0])
         s.close()
+        logging.debug("local IP address = %s", str(ipaddr))
         return ipaddr
