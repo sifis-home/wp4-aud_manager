@@ -20,22 +20,6 @@ Description of the various REST endpoint available while AUD Manager is running.
 
 ---
 
-#### GET /start
-
-Description: Start the internal network analytic.
-
-Sample: `curl http://aud_manager:6060/start`
-
----
-
-#### GET /stop
-
-Description: Stop the internal network analytic.
-
-Sample: `curl http://aud_manager:6060/stop`
-
----
-
 #### GET /status
 
 Description: Return the status of the currently running analytic, including a summary of recenty anomalies.
