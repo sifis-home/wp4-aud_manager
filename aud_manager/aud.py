@@ -1,10 +1,11 @@
 import os, time, uuid
 import math, statistics
-import requests
 import logging
+import websocket
+import json
 import itertools
 
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import Counter, deque
 from typing import NamedTuple
 from enum import Enum
@@ -42,9 +43,15 @@ class Severity(Enum):
 
 class Anomaly():
     def __init__(self, category=Category.Undefined, conn=None):
-        self.time = datetime.now().replace(microsecond=0)
-        self.uuid = uuid.uuid4()
+        self.time = datetime.now(timezone.utc).replace(microsecond=0)
+        self.anomaly_uuid = uuid.uuid4()
         self.conn = conn
+
+        self.topic_name = "SIFIS:AUD_Manager_Results"
+
+        # Topic UUID has not been specified in detail.
+        # This is an educated guess of what it potentially could contain.
+        self.topic_uuid = uuid.uuid3(uuid.NAMESPACE_OID, self.topic_name)
 
         self.category = category
         self.severity = Severity.Unknown
@@ -56,7 +63,7 @@ class Anomaly():
         acl_key = self.conn.get_acl_key()
 
         return {
-            "uuid": str(self.uuid),
+            "anomaly_uuid": str(self.anomaly_uuid),
             "time": str(self.time),
             "category": str(self.category.name),
             "severity": str(self.severity.name),
@@ -72,25 +79,23 @@ class Anomaly():
     def post_to_dht(self):
         payload = {
             "RequestPostTopicUUID": {
-                "topic_name": "TestTopic",
-                "topic_uuid": "FIXTHIS",
+                "topic_name": self.topic_name,
+                "topic_uuid": str(self.topic_uuid),
                 "value": {
                     "description": "AUD Anomaly",
-                    "acl_key": str(self.conn.get_acl_key()),
-                    # To be populated
+                    "subject_ip": str(self.conn.local_ip),
+                    "anomaly": str(self.as_dict()),
                 }
             }
         }
 
         try:
-            post_response = requests.post("http://localhost:3000/pub", json=payload)
-            res = post_response.json()
+            ws = websocket.create_connection("ws://localhost:3000/ws")
+            ws.send(json.dumps(payload))
+            ws.close()
+
         except Exception as e:
             logging.debug("post_to_dht() failed. Reason: %s", str(type(e).__name__))
-            res = {"exception": str(type(e).__name__)}
-
-        return res
-
 
 class Bucket():
     def __init__(self):
