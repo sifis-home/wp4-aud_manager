@@ -1,11 +1,11 @@
 #!/usr/bin/python3
 import sys, os, threading, signal
-import time, math, queue
+import time, uuid, math, queue
 import json
 import logging
 
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, request
 
 # Local imports
@@ -31,7 +31,7 @@ class AUDManager(threading.Thread):
         )
 
         self.running = True
-        self.start_t = datetime.now()
+        self.start_t = datetime.now(timezone.utc).replace(microsecond=0)
         self.sigterm = threading.Event()
         self.local_ips = set()
 
@@ -46,38 +46,26 @@ class AUDManager(threading.Thread):
 
         self.start()
 
-    def __str__(self):
-        pad = "  "
-        out = "*** AUD manager ***\n"
-        out += pad+"running: "+str(self.running)+"\n"
-        out += pad+"learning: "+str(self.learning)+"\n"
-        if self.running:
-            out += pad+"running since: "+str(self.start_t.strftime("%d-%m-%Y %H:%M:%S"))+"\n"
-            uptime = datetime.now().replace(microsecond=0) - self.start_t.replace(microsecond=0)
-            out += pad+"uptime: "+str(uptime)+"\n"
-
-        out += pad+"my IPs: "+str(self.local_ips)+"\n"
-        #out += pad+"connlist length: "+str(len(self.connlist.conns))+"\n"
-        #out += str(self.aud)
-
-        return out
-
     def as_dict(self):
         return {
+            "started": str(self.start_t),
+            "local_ips": [str(ip) for ip in self.local_ips],
             "connlist": self.connlist.as_dict(),
             "aud": self.aud.as_dict(),
         }
 
     def status(self):
+        topic_name = "SIFIS:AUD_Manager_Status"
+        topic_uuid = uuid.uuid3(uuid.NAMESPACE_OID, topic_name)
         res = {
             "RequestPostTopicUUID": {
-                "topic_name": "SIFIS:AUD_Manager_Results",
-                "topic_uuid": "FIXTHIS",
-                "AnalyticStarted": str(self.start_t.strftime("%d-%m-%Y %H:%M:%S")),
+                "topic_name": topic_name,
+                "topic_uuid": str(topic_uuid),
+                "AnalyticStarted": str(self.start_t), #.strftime("%d-%m-%Y %H:%M:%S")),
                 "value": {
                     "description": "aud_manager",
                 },
-                "local_ip": [str(ip) for ip in self.local_ips],
+                "local_ips": [str(ip) for ip in self.local_ips],
                 "anomalies": self.aud.anomaly_wrapper(),
 
             }
@@ -111,7 +99,6 @@ class AUDManager(threading.Thread):
         self.reader.stop()
         self.reader.join()
 
-
     def stop(self):
         self.running = False
         logging.info("AUD manager stopped")
@@ -126,11 +113,9 @@ class AUDManager(threading.Thread):
         return "OK\n"
 
     def aud_update(self):
-        logging.debug("aud_update() started")
         start_t = time.time()
         self.aud.update(self.connlist)
-        end_t = time.time()
-        logging.debug("aud_update() finished in %f seconds.", round((end_t - start_t), 3))
+        logging.debug("aud_update() finished in %f seconds.", round((time.time() - start_t), 3))
 
     def response(self, res):
         return json.dumps({"response": str(res)})
@@ -155,16 +140,18 @@ def apicall_aud_manager_log():
 
 # API endpoints for developer use
 @app.route("/dev/diag")
-def apicall_aud_dev_diag_status():
+def apicall_aud_dev_diag():
     return json.dumps(aud_manager.as_dict())
 
 @app.route("/dev/aud-update")
 def apicall_aud_dev_update():
-    return str(aud_manager.aud_update())
+    logging.debug("Manually triggered aud_update()")
+    aud_manager.aud_update()
+    return aud_manager.response("OK")
 
 @app.route("/dev/connlist")
 def apicall_aud_dev_connlist():
-    return str(aud_manager.connlist)
+    return json.dumps(aud_manager.connlist.as_dict())
 
 @app.route("/dev/force-stop-learning")
 def apicall_aud_dev_stop_learning():
