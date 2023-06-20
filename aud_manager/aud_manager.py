@@ -88,11 +88,9 @@ class AUDManager(threading.Thread):
                 self.connlist.record(self.raw_buf.popleft())
 
             if aud_update_t < time.time():
-                #logging.debug("connlist len before update: %d", len(self.connlist))
                 self.aud_update()
                 self.connlist.trim()
                 aud_update_t = time.time() + self.aud_update_interval
-                #logging.debug("connlist len after update: %d", len(self.connlist))
 
             time.sleep(0.1)
 
@@ -137,6 +135,11 @@ def apicall_aud_manager_log():
     with open(log_path, "r") as f:
         content = f.read()
     return content
+
+@app.route("/mark-benign/<uuid>")
+def apicall_aud_manager_mark_benign(uuid):
+    res = aud_manager.aud.mark_benign(uuid)
+    return aud_manager.response(res)
 
 # API endpoints for developer use
 @app.route("/dev/diag")

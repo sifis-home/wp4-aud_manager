@@ -24,7 +24,15 @@ Description of the various REST endpoint available while AUD Manager is running.
 
 Description: Return the status of the currently running analytic, including a summary of recenty anomalies.
 
-Sample: `curl http://aud_manager:6060/status`
+Sample: `curl http://localhost:6060/status`
+
+---
+
+#### GET /log
+
+Description: List of logged events.
+
+Sample: `curl http://localhost:6060/log`
 
 ---
 
@@ -32,7 +40,7 @@ Sample: `curl http://aud_manager:6060/status`
 
 Description: Stop the internal network analytic.
 
-Sample: `curl http://aud_manager:6060/mark-benign/00000000-1234-1234-1234-123456789012`
+Sample: `curl http://localhost:6060/mark-benign/00000000-1234-1234-1234-123456789012`
 
 ---
 
@@ -42,4 +50,20 @@ Sample: `curl http://aud_manager:6060/mark-benign/00000000-1234-1234-1234-123456
 
 Description: Verbose output of analytic internals. JSON schema of the output is volatile and subject to change as the analytic is being developed.
 
-Sample: `curl http://aud_manager:6060/dev/diag`
+Sample: `curl http://localhost:6060/dev/diag`
+
+---
+
+#### GET /dev/aud-update
+
+Description: Manually enforce an internal aud_update().
+
+Sample: `curl http://localhost:6060/dev/aud-update`
+
+---
+
+#### GET /dev/connlist
+
+Descriptiong: Returns a list of active connections on AUD managers internal connection tracking.
+
+Sample: `curl http://localhost:6060/dev/connlist`
