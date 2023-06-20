@@ -44,7 +44,7 @@ class Severity(Enum):
 class Anomaly():
     def __init__(self, category=Category.Undefined, conn=None):
         self.time = datetime.now(timezone.utc).replace(microsecond=0)
-        self.anomaly_uuid = uuid.uuid4()
+        self.uuid = uuid.uuid4()
         self.conn = conn
 
         self.topic_name = "SIFIS:AUD_Manager_Results"
@@ -63,7 +63,7 @@ class Anomaly():
         acl_key = self.conn.get_acl_key()
 
         return {
-            "anomaly_uuid": str(self.anomaly_uuid),
+            "anomaly_uuid": str(self.uuid),
             "time": str(self.time),
             "category": str(self.category.name),
             "severity": str(self.severity.name),
@@ -238,8 +238,6 @@ class AUDRecord:
 
     def process(self, connlist):
         for conn in connlist:
-            #logging.debug("  %s", str(conn))
-
             if self.remote_as is None:
                 self.aud.anomalies.append(Anomaly(category=Category.NovelFlow, conn=conn))
                 ### TODO: Resolve remote AS based on acl_key.addr
@@ -262,7 +260,7 @@ class AUDRecord:
 
 
     def evaluate(self, category, conn):
-        logging.debug("evaluation")
+        logging.debug("evaluate")
 
 
 class AUD:
@@ -270,7 +268,7 @@ class AUD:
         self.global_conn_counter = 0
         self.last_updated = 0
         self.records = dict()
-        self.anomalies = deque()
+        self.anomalies = deque(maxlen=100)
 
 
     def as_dict(self):
@@ -291,6 +289,18 @@ class AUD:
                 self.records[key] = AUDRecord(self)
 
             self.records[key].process(connlist.conns_by_acl_key(key))
+
+    def mark_benign(self, input_uuid_string):
+        try:
+            needle = uuid.UUID(input_uuid_string)
+        except ValueError as ve:
+            return str(type(ve).__name__)
+
+        for anomaly in self.anomalies:
+            if needle == anomaly.uuid:
+                self.anomalies.remove(anomaly)
+                return "OK"
+        return "anomaly UUID not found"
 
     def anomaly_wrapper(self):
         return [anomaly.as_dict() for anomaly in self.anomalies]
