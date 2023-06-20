@@ -38,7 +38,7 @@ Sample: `curl http://localhost:6060/log`
 
 #### GET /mark-benign/{anomaly_uuid}
 
-Description: Stop the internal network analytic.
+Description: Mark anomaly with provided UUID as benign.
 
 Sample: `curl http://localhost:6060/mark-benign/00000000-1234-1234-1234-123456789012`
 
