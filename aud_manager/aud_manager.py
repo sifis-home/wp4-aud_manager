@@ -173,4 +173,4 @@ signal.signal(signal.SIGINT, terminate)
 signal.signal(signal.SIGTERM, terminate)
 
 
-app.run(host="0.0.0.0", port=6060)
+app.run(host="0.0.0.0", port=5050)
