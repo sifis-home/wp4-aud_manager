@@ -5,7 +5,7 @@ services:
     image: ghcr.io/sifis-home/aud_manager:latest
     network_mode: host
     ports:
-      - 6060:6060/tcp
+      - 5050:5050/tcp
 
   watchtower:
     image: containrrr/watchtower
