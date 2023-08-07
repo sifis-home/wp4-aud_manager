@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: wp4-aud_manager
+Source: https://github.com/sifis-home/wp4-aud_manager
+
+Files: *
+Copyright: 2022 sifis-home
+License: MIT
