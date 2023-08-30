@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM alpine:3.11
+FROM --platform=$TARGETPLATFORM alpine:3.11
 
 RUN apk --no-cache update   && \
     apk upgrade             && \
