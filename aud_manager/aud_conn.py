@@ -27,8 +27,6 @@ class ConnList():
         self.lookup = dict()
         self.conns = list()
 
-        self.timeout = 60*1000000
-
     def __len__(self):
         return len(self.conns)
 
@@ -99,6 +97,7 @@ class ConnList():
 class ConnEntry():
     def __init__(self, key, l3hdr, l4hdr):
         self.key = key
+        self.new = True
 
         if l3hdr.direction == pr.socket.PACKET_HOST:
             self.acl_direction = "inbound" # to
@@ -149,6 +148,12 @@ class ConnEntry():
                           proto = self.key.proto,
                           addr = self.acl_addr,
                           svc_port = self.key.dst_port)
+
+    def get_freq_key(self):
+        return aud.FreqKey(ip_ver = self.local_ip.version,
+                           direction = self.acl_direction,
+                           proto = self.key.proto,
+                           svc_port = self.key.dst_port)
 
     def append(self, direction, t, plen, flags):
         self.data.add(t, plen, direction)
