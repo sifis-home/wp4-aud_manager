@@ -36,9 +36,9 @@ Sample: `curl http://localhost:5050/log`
 
 ---
 
-#### GET /mark-benign/{anomaly_uuid}
+#### GET /mark-benign/{anomaly_uuid}|all
 
-Description: Mark anomaly with provided UUID as benign.
+Description: Mark anomaly with provided UUID as benign. One can also use `all` in place of a UUID to clear all current in-memory anomalies.
 
 Sample: `curl http://localhost:5050/mark-benign/00000000-1234-1234-1234-123456789012`
 

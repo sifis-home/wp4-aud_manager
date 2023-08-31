@@ -89,6 +89,7 @@ class AUDManager(threading.Thread):
 
             if aud_update_t < time.time():
                 self.aud_update()
+                self.aud_evaluate()
                 self.connlist.trim()
                 aud_update_t = time.time() + self.aud_update_interval
 
@@ -114,6 +115,11 @@ class AUDManager(threading.Thread):
         start_t = time.time()
         self.aud.update(self.connlist)
         logging.debug("aud_update() finished in %f seconds.", round((time.time() - start_t), 3))
+
+    def aud_evaluate(self):
+        start_t = time.time()
+        res = self.aud.evaluate()
+        logging.debug("aud_evaluate() finished in %f seconds. %d anomalies reported", round((time.time() - start_t), 3), res)
 
     def response(self, res):
         return json.dumps({"response": str(res)})

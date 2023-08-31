@@ -25,6 +25,12 @@ class ACLKey(NamedTuple):
     addr: str
     svc_port: int
 
+class FreqKey(NamedTuple):
+    ip_ver: int
+    direction: str
+    proto: int
+    svc_port: int
+
 class Direction(Enum):
     FWD = 0
     REV = 1
@@ -42,7 +48,7 @@ class Severity(Enum):
     Alarming = 4
 
 class Anomaly():
-    def __init__(self, category=Category.Undefined, conn=None):
+    def __init__(self, category=Category.Undefined, conn=None, score=0.0):
         self.time = datetime.now(timezone.utc).replace(microsecond=0)
         self.uuid = uuid.uuid4()
         self.conn = conn
@@ -55,12 +61,33 @@ class Anomaly():
 
         self.category = category
         self.severity = Severity.Unknown
-        self.score = 0.0
+        self.score = score
 
         self.post_to_dht()
 
     def as_dict(self):
         acl_key = self.conn.get_acl_key()
+
+        if acl_key.proto == 1:
+            svc_port = None
+        else:
+            svc_port = acl_key.svc_port
+
+        if self.category == Category.FrequentFlow:
+            details = {
+                "direction": str(acl_key.direction),
+                "proto": l4proto[acl_key.proto],
+                "svc_port": str(svc_port),
+                "ip_ver": acl_key.ip_ver
+            }
+        else:
+            details = {
+                "direction": str(acl_key.direction),
+                "proto": l4proto[acl_key.proto],
+                "svc_port": str(svc_port),
+                "addr": str(acl_key.addr),
+                "ip_ver": acl_key.ip_ver,
+            }
 
         return {
             "anomaly_uuid": str(self.uuid),
@@ -68,12 +95,7 @@ class Anomaly():
             "category": str(self.category.name),
             "severity": str(self.severity.name),
             "score": str(round(self.score, 3)),
-            "details": {
-                "direction": str(acl_key.direction),
-                "proto": l4proto[acl_key.proto]+":"+str(acl_key.svc_port),
-                "addr": str(acl_key.addr),
-                "ip_ver": acl_key.ip_ver,
-            }
+            "details": details
         }
 
     def post_to_dht(self):
@@ -220,6 +242,33 @@ class TimeSeriesAggregator():
     def pep_distribution(self):
         return Counter(self.peps)
 
+class FrequencyCounter:
+    def __init__(self, ws, thresh):
+        self.winsize = ws * 1000000000
+        self.threshold = thresh
+        self.counters = dict()
+        self.connref = dict()
+
+    def __str__(self):
+        return str(self.counters)
+
+    def add(self, conn):
+        key = conn.get_freq_key()
+        if key not in self.counters:
+            self.counters[key] = []
+            self.connref[key] = conn
+
+        self.counters[key].append(conn.created_ns)
+
+    def evaluate(self):
+        now = time.time_ns()
+
+        for counter, timestamps in self.counters.items():
+            timestamps[:] = [ts for ts in timestamps if ts > (now - self.winsize)]
+            if len(timestamps) > self.threshold:
+                ratio = round((len(timestamps) / self.threshold), 3)
+                yield Anomaly(category=Category.FrequentFlow, conn=self.connref[counter], score=ratio)
+
 
 class AUDRecord:
     def __init__(self, aud_handle):
@@ -239,11 +288,13 @@ class AUDRecord:
     def process(self, connlist):
         for conn in connlist:
             if self.remote_as is None:
-                self.aud.anomalies.append(Anomaly(category=Category.NovelFlow, conn=conn))
+                #self.aud.anomalies.append(Anomaly(category=Category.NovelFlow, conn=conn))
                 ### TODO: Resolve remote AS based on acl_key.addr
                 self.remote_as = "Unresolved/FIXTHIS"
 
-            # AS score and evaluation TODO
+            if conn.new:
+                self.aud.freq_counter.add(conn)
+                conn.new = False
 
             if conn.active():
                 # Do not aggregate stats over partial flow records
@@ -259,8 +310,8 @@ class AUDRecord:
             conn.marked_for_deletion = True
 
 
-    def evaluate(self, category, conn):
-        logging.debug("evaluate")
+    def evaluate(self):
+        pass
 
 
 class AUD:
@@ -268,6 +319,7 @@ class AUD:
         self.global_conn_counter = 0
         self.last_updated = 0
         self.records = dict()
+        self.freq_counter = FrequencyCounter(30, 30)
         self.anomalies = deque(maxlen=100)
 
 
@@ -290,7 +342,22 @@ class AUD:
 
             self.records[key].process(connlist.conns_by_acl_key(key))
 
+    def evaluate(self):
+        count = 0
+        for record in self.records.values():
+            record.evaluate()
+
+        for result in self.freq_counter.evaluate():
+            self.anomalies.append(result)
+            count += 1
+
+        return count
+
     def mark_benign(self, input_uuid_string):
+        if input_uuid_string == "all":
+            self.anomalies.clear()
+            return "OK"
+
         try:
             needle = uuid.UUID(input_uuid_string)
         except ValueError as ve:
