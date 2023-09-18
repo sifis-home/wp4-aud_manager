@@ -73,21 +73,13 @@ class Anomaly():
         else:
             svc_port = acl_key.svc_port
 
-        if self.category == Category.FrequentFlow:
-            details = {
-                "direction": str(acl_key.direction),
-                "proto": l4proto[acl_key.proto],
-                "svc_port": str(svc_port),
-                "ip_ver": acl_key.ip_ver
-            }
-        else:
-            details = {
-                "direction": str(acl_key.direction),
-                "proto": l4proto[acl_key.proto],
-                "svc_port": str(svc_port),
-                "addr": str(acl_key.addr),
-                "ip_ver": acl_key.ip_ver,
-            }
+        details = {
+            "direction": str(acl_key.direction),
+            "proto": l4proto[acl_key.proto],
+            "svc_port": str(svc_port),
+            "addr": str(acl_key.addr),
+            "ip_ver": acl_key.ip_ver,
+        }
 
         return {
             "anomaly_uuid": str(self.uuid),
@@ -112,6 +104,7 @@ class Anomaly():
         }
 
         try:
+            logging.debug("post_to_dht() payload: %s", str(json.dumps(payload)))
             ws = websocket.create_connection("ws://localhost:3000/ws")
             ws.send(json.dumps(payload))
             ws.close()
@@ -334,9 +327,9 @@ class AUD:
     def update(self, connlist):
 
         acl_keys = connlist.aggregate_acl_keys()
-
+        logging.debug("Total ACL keys: %d", len(acl_keys))
         for key in acl_keys:
-            logging.debug("%s", str(key))
+            #logging.debug("%s", str(key))
             if key not in self.records:
                 self.records[key] = AUDRecord(self)
 
