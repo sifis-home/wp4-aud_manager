@@ -96,7 +96,7 @@ jobs:
 
     - name: Run tests and compute code coverage
       run: |
-        poetry run coverage run -m pytest
+        poetry run coverage run --source=. -m pytest
         poetry run coverage report -m
 
     - name: Create Codecov report
