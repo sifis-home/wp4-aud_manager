@@ -1,5 +1,19 @@
 # WP4 Analytic: AUD Manager
 
+[![Actions Status][actions badge]][actions]
+[![CodeCov][codecov badge]][codecov]
+[![LICENSE][license badge]][license]
+
+<!-- Links -->
+[actions]: https://github.com/sifis-home/wp4-aud_manager/actions
+[codecov]: https://codecov.io/gh/sifis-home/wp4-aud_manager
+[license]: LICENSES/MIT.txt
+
+<!-- Badges -->
+[actions badge]: https://github.com/sifis-home/wp4-aud_manager/workflows/wp4-aud_manager/badge.svg
+[codecov badge]: https://codecov.io/gh/sifis-home/wp4-aud_manager/branch/master/graph/badge.svg
+[license badge]: https://img.shields.io/badge/license-MIT-blue.svg
+
 
 ## Deploying
 
