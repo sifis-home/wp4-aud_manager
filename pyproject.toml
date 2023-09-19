@@ -50,7 +50,7 @@ select = [
 ]
 
 [tool.coverage.run]
-omit = ["*/site-packages/*"]
+omit = [".*", "*/site-packages/*"]
 
 [tool.coverage.report]
 fail_under = 60
