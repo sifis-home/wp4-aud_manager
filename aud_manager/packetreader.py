@@ -128,8 +128,7 @@ class PacketReader(threading.Thread):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Might want to catch an exception in case connect and/or getsockname fails
         s.connect(("8.8.8.8", 80))
-        #ipaddr = ipaddress.ip_address(s.getsockname()[0])
-        ipaddr = ipaddress.ip_address("192.168.20.1")
+        ipaddr = ipaddress.ip_address(s.getsockname()[0])
         s.close()
         logging.debug("local IP address = %s", str(ipaddr))
         return ipaddr
