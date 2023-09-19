@@ -1,14 +1,15 @@
-import websockets
 import asyncio
 
-async def sink(websocket, path):
+import websockets
 
+
+async def sink(websocket, path):
     try:
         async for message in websocket:
             print(message)
 
     except Exception as e:
-        print("Exception: "+str(type(e).__name__))
+        print("Exception: " + str(type(e).__name__))
 
 
 start_server = websockets.serve(sink, "localhost", 3000)
