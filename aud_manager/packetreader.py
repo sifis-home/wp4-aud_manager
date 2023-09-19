@@ -1,9 +1,9 @@
-import os, sys, time, threading
+import ipaddress
 import logging
 import socket
 import struct
-import binascii
-import ipaddress
+import threading
+import time
 from typing import NamedTuple
 
 ETH_HEADER_L = 14
@@ -16,25 +16,29 @@ class IPv4Packet(NamedTuple):
     proto: int
     src: ipaddress.IPv4Address
     dst: ipaddress.IPv4Address
-    direction: int # AF_PACKET -> pkttype: PACKET_HOST=0, PACKET_OUTGOING=4
+    direction: int  # AF_PACKET -> pkttype: PACKET_HOST=0, PACKET_OUTGOING=4
+
 
 class IPv6Packet(NamedTuple):
     ts: int
     payload_len: int
-    proto: int # next_header
+    proto: int  # next_header
     hop_limit: int
     src: ipaddress.IPv6Address
     dst: ipaddress.IPv6Address
     direction: int
 
+
 class ICMPHeader(NamedTuple):
     msg_type: int
     code: int
+
 
 class TCPHeader(NamedTuple):
     sport: int
     dport: int
     flags: bytes
+
 
 class UDPHeader(NamedTuple):
     sport: int
@@ -47,7 +51,9 @@ class PacketReader(threading.Thread):
         threading.Thread.__init__(self)
         self.buf = buf
         self.running = True
-        self.sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)) # ETH_P_ALL
+        self.sock = socket.socket(
+            socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)
+        )  # ETH_P_ALL
 
     def stop(self):
         self.running = False
@@ -57,7 +63,6 @@ class PacketReader(threading.Thread):
             self.buf.append(pkt)
 
     def sock_reader(self):
-
         while self.running:
             l3hdr = l4hdr = None
 
@@ -71,26 +76,28 @@ class PacketReader(threading.Thread):
                 # ETHERTYPE_IPV4
                 l3hdr, hlen = self.parse_ipv4_header(addr[2], data[seek:])
 
-            elif ethertype == 0x86dd:
+            elif ethertype == 0x86DD:
                 # ETHERTYPE_IPV6
                 l3hdr, hlen = self.parse_ipv6_header(addr[2], data[seek:])
 
             if not l3hdr:
                 continue
 
-            if not (l3hdr.direction == socket.PACKET_HOST or
-                    l3hdr.direction == socket.PACKET_OUTGOING):
+            if not (
+                l3hdr.direction == socket.PACKET_HOST
+                or l3hdr.direction == socket.PACKET_OUTGOING
+            ):
                 continue
 
             seek += hlen
 
-            if l3hdr.proto == 0x01:   # ICMP
+            if l3hdr.proto == 0x01:  # ICMP
                 l4hdr = self.parse_icmp_header(data[seek:])
 
-            elif l3hdr.proto == 0x06: # TCP
+            elif l3hdr.proto == 0x06:  # TCP
                 l4hdr = self.parse_tcp_header(data[seek:])
 
-            elif l3hdr.proto == 0x11: # UDP
+            elif l3hdr.proto == 0x11:  # UDP
                 l4hdr = self.parse_udp_header(data[seek:])
 
             if not l4hdr:
@@ -98,14 +105,20 @@ class PacketReader(threading.Thread):
 
             yield l3hdr, l4hdr
 
-
     # Layer 3 parsers
     def parse_ipv4_header(self, direction, data):
-        ihl = (data[0] & 0x0f) * 4
-        length, ttl, proto, src_addr, dst_addr = struct.unpack("! 2x H 4x B B 2x 4s 4s", data[:20])
+        ihl = (data[0] & 0x0F) * 4
+        length, ttl, proto, src_addr, dst_addr = struct.unpack(
+            "! 2x H 4x B B 2x 4s 4s", data[:20]
+        )
         src = ipaddress.ip_address(socket.inet_ntoa(src_addr))
         dst = ipaddress.ip_address(socket.inet_ntoa(dst_addr))
-        return IPv4Packet(time.time_ns(), length, ttl, proto, src, dst, direction), ihl
+        return (
+            IPv4Packet(
+                time.time_ns(), length, ttl, proto, src, dst, direction
+            ),
+            ihl,
+        )
 
     def parse_ipv6_header(self, direction, data):
         # To be implemented

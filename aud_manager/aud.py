@@ -1,22 +1,18 @@
-import os, time, uuid
-import math, statistics
-import logging
-import websocket
 import json
-import itertools
-
-from datetime import datetime, timezone
+import logging
+import statistics
+import time
+import uuid
 from collections import Counter, deque
-from typing import NamedTuple
+from datetime import datetime, timezone
 from enum import Enum
+from typing import NamedTuple
 
 # Local imports
-import aud_conn
+import websocket
 
-l4proto = {1: "ICMP",
-           2: "IGMP",
-           6: "TCP",
-           17: "UDP"}
+l4proto = {1: "ICMP", 2: "IGMP", 6: "TCP", 17: "UDP"}
+
 
 class ACLKey(NamedTuple):
     ip_ver: int
@@ -25,15 +21,18 @@ class ACLKey(NamedTuple):
     addr: str
     svc_port: int
 
+
 class FreqKey(NamedTuple):
     ip_ver: int
     direction: str
     proto: int
     svc_port: int
 
+
 class Direction(Enum):
     FWD = 0
     REV = 1
+
 
 class Category(Enum):
     Undefined = 1
@@ -41,13 +40,15 @@ class Category(Enum):
     FrequentFlow = 3
     PacketExchangeMimatch = 4
 
+
 class Severity(Enum):
     Unknown = 1
     Benign = 2
     Suspicious = 3
     Alarming = 4
 
-class Anomaly():
+
+class Anomaly:
     def __init__(self, category=Category.Undefined, conn=None, score=0.0):
         self.time = datetime.now(timezone.utc).replace(microsecond=0)
         self.uuid = uuid.uuid4()
@@ -87,7 +88,7 @@ class Anomaly():
             "category": str(self.category.name),
             "severity": str(self.severity.name),
             "score": str(round(self.score, 3)),
-            "details": details
+            "details": details,
         }
 
     def post_to_dht(self):
@@ -99,30 +100,34 @@ class Anomaly():
                     "description": "AUD Anomaly",
                     "subject_ip": str(self.conn.local_ip),
                     "anomaly": str(self.as_dict()),
-                }
+                },
             }
         }
 
         try:
-            logging.debug("post_to_dht() payload: %s", str(json.dumps(payload)))
+            logging.debug(
+                "post_to_dht() payload: %s", str(json.dumps(payload))
+            )
             ws = websocket.create_connection("ws://localhost:3000/ws")
             ws.send(json.dumps(payload))
             ws.close()
 
         except Exception as e:
-            logging.debug("post_to_dht() failed. Reason: %s", str(type(e).__name__))
+            logging.debug(
+                "post_to_dht() failed. Reason: %s", str(type(e).__name__)
+            )
 
-class Bucket():
+
+class Bucket:
     def __init__(self):
-        self.values = [[],  # FWD
-                       []]  # REV
+        self.values = [[], []]  # FWD  # REV
 
     def add(self, plen, direction):
         self.values[direction].append(plen)
 
     def get_mean(self, direction):
         # Needs a redesign after input changed
-        #return statistics.mean(self.values[direction])
+        # return statistics.mean(self.values[direction])
         return 1
 
     def get_mean_stdev(self, direction):
@@ -131,7 +136,7 @@ class Bucket():
         return (mean, stdev)
 
 
-class TimeSeries():
+class TimeSeries:
     def __init__(self, t0):
         self.created = t0
 
@@ -149,7 +154,15 @@ class TimeSeries():
     def __str__(self):
         output = ""
         for t, v, d in zip(self.time, self.value, self.direction):
-            output += "d: "+str(d)+"  |  t: "+str(t).rjust(10)+"  |  v: "+str(v).rjust(6)+"\n"
+            output += (
+                "d: "
+                + str(d)
+                + "  |  t: "
+                + str(t).rjust(10)
+                + "  |  v: "
+                + str(v).rjust(6)
+                + "\n"
+            )
         return output.rstrip()
 
     def add(self, t, val, direction):
@@ -170,26 +183,28 @@ class TimeSeries():
         rev_bytes = []
 
         for d, val in zip(self.direction, self.value):
-            fwd_bytes.append(val) if d == Direction.FWD.value else rev_bytes.append(val)
+            fwd_bytes.append(
+                val
+            ) if d == Direction.FWD.value else rev_bytes.append(val)
 
-        #logging.debug("fwd_bytes %d, rev_bytes %d", sum(fwd_bytes), sum(rev_bytes))
+        # logging.debug("fwd_bytes %d, rev_bytes %d", sum(fwd_bytes), sum(rev_bytes))
         return (sum(fwd_bytes), sum(rev_bytes))
 
     def pep(self):
         return "".join(map(str, self.direction))
 
 
-class TimeSeriesAggregator():
+class TimeSeriesAggregator:
     def __init__(self):
         self.samples = 0
-        #self.timeseries = []
+        # self.timeseries = []
 
         self.fwd_totals = list()
         self.rev_totals = list()
 
         self.buckets = []
-        #self.pep_dist = Counter()
-        self.peps = [] # Packet Exchange Patterns
+        # self.pep_dist = Counter()
+        self.peps = []  # Packet Exchange Patterns
 
     def __len__(self):
         return self.samples
@@ -197,27 +212,41 @@ class TimeSeriesAggregator():
     def as_dict(self):
         res = {
             "samples": self.samples,
-            #"buckets": str(self.buckets),
+            # "buckets": str(self.buckets),
             "pep_dist": self.pep_distribution(),
             "total_bytes": {
                 "fwd": str(self.fwd_totals),
                 "rev": str(self.rev_totals),
-            }
+            },
         }
         return res
 
-    def add(self, data): # data is of type TimeSeries
+    def add(self, data):  # data is of type TimeSeries
         print("*****")
-        print("lengths before: "+str(len(self.buckets))+" / "+str(len(data.buckets)))
+        print(
+            "lengths before: "
+            + str(len(self.buckets))
+            + " / "
+            + str(len(data.buckets))
+        )
 
         if len(self.buckets) < len(data.buckets):
-            self.buckets.extend([Bucket() for _ in range(len(data.buckets)-len(self.buckets))])
+            self.buckets.extend(
+                [
+                    Bucket()
+                    for _ in range(len(data.buckets) - len(self.buckets))
+                ]
+            )
 
-        print("lengths after:  "+str(len(self.buckets))+" / "+str(len(data.buckets)))
-
+        print(
+            "lengths after:  "
+            + str(len(self.buckets))
+            + " / "
+            + str(len(data.buckets))
+        )
 
         for i, bucket in enumerate(data.buckets):
-            print(str(i)+": "+str(bucket.get_mean(0)))
+            print(str(i) + ": " + str(bucket.get_mean(0)))
 
         pass
 
@@ -234,6 +263,7 @@ class TimeSeriesAggregator():
 
     def pep_distribution(self):
         return Counter(self.peps)
+
 
 class FrequencyCounter:
     def __init__(self, ws, thresh):
@@ -257,10 +287,16 @@ class FrequencyCounter:
         now = time.time_ns()
 
         for counter, timestamps in self.counters.items():
-            timestamps[:] = [ts for ts in timestamps if ts > (now - self.winsize)]
+            timestamps[:] = [
+                ts for ts in timestamps if ts > (now - self.winsize)
+            ]
             if len(timestamps) > self.threshold:
                 ratio = round((len(timestamps) / self.threshold), 3)
-                yield Anomaly(category=Category.FrequentFlow, conn=self.connref[counter], score=ratio)
+                yield Anomaly(
+                    category=Category.FrequentFlow,
+                    conn=self.connref[counter],
+                    score=ratio,
+                )
 
 
 class AUDRecord:
@@ -270,18 +306,17 @@ class AUDRecord:
         self.remote_as = None
         self.aggregator = TimeSeriesAggregator()
 
-
     def as_dict(self):
         return {
             "last_updated": self.last_updated,
             "remote_as": str(self.remote_as),
-            "aggregator": self.aggregator.as_dict()
+            "aggregator": self.aggregator.as_dict(),
         }
 
     def process(self, connlist):
         for conn in connlist:
             if self.remote_as is None:
-                #self.aud.anomalies.append(Anomaly(category=Category.NovelFlow, conn=conn))
+                # self.aud.anomalies.append(Anomaly(category=Category.NovelFlow, conn=conn))
                 ### TODO: Resolve remote AS based on acl_key.addr
                 self.remote_as = "Unresolved/FIXTHIS"
 
@@ -302,7 +337,6 @@ class AUDRecord:
             # Finally:
             conn.marked_for_deletion = True
 
-
     def evaluate(self):
         pass
 
@@ -315,21 +349,21 @@ class AUD:
         self.freq_counter = FrequencyCounter(30, 30)
         self.anomalies = deque(maxlen=100)
 
-
     def as_dict(self):
         res = {
             "global_conn_counter": str(self.global_conn_counter),
-            "aud_records": [{"acl_key": str(key), "data": self.records[key].as_dict()} for key in self.records.keys()],
+            "aud_records": [
+                {"acl_key": str(key), "data": self.records[key].as_dict()}
+                for key in self.records.keys()
+            ],
         }
         return res
 
-
     def update(self, connlist):
-
         acl_keys = connlist.aggregate_acl_keys()
         logging.debug("Total ACL keys: %d", len(acl_keys))
         for key in acl_keys:
-            #logging.debug("%s", str(key))
+            # logging.debug("%s", str(key))
             if key not in self.records:
                 self.records[key] = AUDRecord(self)
 

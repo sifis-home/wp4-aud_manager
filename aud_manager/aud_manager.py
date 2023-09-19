@@ -1,19 +1,22 @@
 #!/usr/bin/python3
-import sys, os, threading, signal
-import time, uuid, math, queue
 import json
 import logging
-
+import signal
+import sys
+import threading
+import time
+import uuid
 from collections import deque
-from datetime import datetime, timedelta, timezone
-from flask import Flask, request
+from datetime import datetime, timezone
 
 # Local imports
 import aud
 import aud_conn
 import packetreader as pr
+from flask import Flask, request
 
 log_path = "/tmp/aud_manager.log"
+
 
 class AUDManager(threading.Thread):
     """Main thread for running AUD Manager."""
@@ -24,10 +27,7 @@ class AUDManager(threading.Thread):
             level=logging.DEBUG,
             format="%(asctime)s %(levelname)-8s [%(filename)s]: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
-            handlers=[
-                logging.FileHandler(log_path),
-                logging.StreamHandler()
-            ]
+            handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
         )
 
         self.running = True
@@ -36,7 +36,7 @@ class AUDManager(threading.Thread):
         self.local_ips = set()
 
         self.aud = aud.AUD()
-        self.aud_update_interval = 10 # seconds
+        self.aud_update_interval = 10  # seconds
         self.connlist = aud_conn.ConnList(self)
 
         self.raw_buf = deque()
@@ -61,13 +61,14 @@ class AUDManager(threading.Thread):
             "RequestPostTopicUUID": {
                 "topic_name": topic_name,
                 "topic_uuid": str(topic_uuid),
-                "AnalyticStarted": str(self.start_t), #.strftime("%d-%m-%Y %H:%M:%S")),
+                "AnalyticStarted": str(
+                    self.start_t
+                ),  # .strftime("%d-%m-%Y %H:%M:%S")),
                 "value": {
                     "description": "aud_manager",
                 },
                 "local_ips": [str(ip) for ip in self.local_ips],
                 "anomalies": self.aud.anomaly_wrapper(),
-
             }
         }
         return json.dumps(res)
@@ -114,12 +115,19 @@ class AUDManager(threading.Thread):
     def aud_update(self):
         start_t = time.time()
         self.aud.update(self.connlist)
-        logging.debug("aud_update() finished in %f seconds.", round((time.time() - start_t), 3))
+        logging.debug(
+            "aud_update() finished in %f seconds.",
+            round((time.time() - start_t), 3),
+        )
 
     def aud_evaluate(self):
         start_t = time.time()
         res = self.aud.evaluate()
-        logging.debug("aud_evaluate() finished in %f seconds. %d anomalies reported", round((time.time() - start_t), 3), res)
+        logging.debug(
+            "aud_evaluate() finished in %f seconds. %d anomalies reported",
+            round((time.time() - start_t), 3),
+            res,
+        )
 
     def response(self, res):
         return json.dumps({"response": str(res)})
@@ -136,21 +144,25 @@ flasklog.disabled = True
 def apicall_aud_manager_status():
     return str(aud_manager.status())
 
+
 @app.route("/log")
 def apicall_aud_manager_log():
     with open(log_path, "r") as f:
         content = f.read()
     return content
 
+
 @app.route("/mark-benign/<uuid>")
 def apicall_aud_manager_mark_benign(uuid):
     res = aud_manager.aud.mark_benign(uuid)
     return aud_manager.response(res)
 
+
 # API endpoints for developer use
 @app.route("/dev/diag")
 def apicall_aud_dev_diag():
     return json.dumps(aud_manager.as_dict())
+
 
 @app.route("/dev/aud-update")
 def apicall_aud_dev_update():
@@ -158,13 +170,15 @@ def apicall_aud_dev_update():
     aud_manager.aud_update()
     return aud_manager.response("OK")
 
+
 @app.route("/dev/connlist")
 def apicall_aud_dev_connlist():
     return json.dumps(aud_manager.connlist.as_dict())
 
+
 @app.route("/dev/force-stop-learning")
 def apicall_aud_dev_stop_learning():
-    return str(aud_manager.stop_learning("via "+request.path))
+    return str(aud_manager.stop_learning("via " + request.path))
 
 
 def terminate(sig, frame):
