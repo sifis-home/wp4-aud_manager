@@ -12,6 +12,9 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
 ]
 include = ["README.md", "LICENSES/MIT.txt"]
+packages = [
+    { include = "aud_manager" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.11"
