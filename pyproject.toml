@@ -2,7 +2,7 @@
 name = "wp4-aud_manager"
 version = "0.1"
 description = "Anomaly detection analytic for WP4 analytics toolbox."
-authors = [""]
+authors = ["Name Surname <name.surname@domain.com>"]
 repository = "https://github.com/sifis-home/wp4-aud_manager"
 license = "MIT"
 classifiers = [
